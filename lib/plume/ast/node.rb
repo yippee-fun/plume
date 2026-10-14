@@ -203,13 +203,14 @@ module Plume
 			define_node_reader(name)
 		end
 
-		# Absent children read as nil rather than the LiteralNil default
+		# Absent children read as nil rather than the LiteralNil default. Evaluated from a string
+		# because a method defined with a block cannot be called from another Ractor
 		def self.define_node_reader(name)
-			ivar = :"@#{name}"
-			define_method(name) do
-				value = instance_variable_get(ivar)
-				LiteralNil.equal?(value) ? nil : value
-			end
+			class_eval <<-RUBY, __FILE__, __LINE__ + 1
+				def #{name}
+					LiteralNil.equal?(@#{name}) ? nil : @#{name}
+				end
+			RUBY
 		end
 	end
 end
