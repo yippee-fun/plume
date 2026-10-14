@@ -297,7 +297,7 @@ module Plume
 			it[44]	=	:COMMA		# ,
 			it[59]	=	:SEMI			# ;
 			it[126]	=	:BITNOT		# ~
-		end
+		end.freeze
 
 		attr_reader :sql
 		attr_accessor :cursor, :anchor
