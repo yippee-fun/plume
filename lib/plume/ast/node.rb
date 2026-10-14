@@ -6,6 +6,41 @@ module Plume
 
 		Stringy = _Union(String, Symbol)
 
+		# Literal keeps the props of a class in a Schema guarded by a Mutex, and a Mutex can never be
+		# shared - so outside the main Ractor every node constructor raises. Once all props are
+		# declared, `Plume.eager_load!` swaps in this frozen stand-in, which has the same readers
+		class ShareableSchema
+			include Enumerable
+
+			attr_reader :properties_index
+
+			def initialize(schema)
+				@properties_index = schema.properties_index.dup
+				@sorted_properties = schema.to_a
+			end
+
+			def [](key) = @properties_index[key]
+			def each(&) = @sorted_properties.each(&)
+			def size = @sorted_properties.size
+			def empty? = @sorted_properties.empty?
+
+			# Literal starts the schema of a subclass from a dup of its parent's
+			def dup = Literal::Properties::Schema.new(properties_index: @properties_index.dup, sorted_properties: @sorted_properties.dup)
+		end
+
+		def self.literal_properties
+			@shareable_literal_properties || super
+		rescue Ractor::IsolationError
+			raise Ractor::IsolationError, "#{name} is not shareable yet, call Plume.eager_load! from the main Ractor first"
+		end
+
+		def self.make_shareable!
+			@shareable_literal_properties = Ractor.make_shareable(ShareableSchema.new(literal_properties))
+			Ractor.make_shareable(@inspectable_props)
+			Ractor.make_shareable(@token_names)
+			self
+		end
+
 		prop :full_source, _Nilable(String)
 		prop :leading, _Nilable(Token)
 		prop :trailing, _Nilable(Token)

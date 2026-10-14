@@ -140,6 +140,20 @@ module Plume
 		end
 	end
 
+	# Loads everything that is otherwise autoloaded and freezes what the node classes know
+	# about their props, which is what lets Plume run inside Ractors. Call it from the main
+	# Ractor before starting any. Node classes cannot get new props afterwards
+	def self.eager_load!
+		# SQLiteGrammar is a development tool which pulls in net/http
+		(constants - [:SQLiteGrammar]).each { |name| const_get(name) if autoload?(name) }
+		Analysis::Resolver
+		constants.each do |name|
+			klass = const_get(name)
+			klass.make_shareable! if Class === klass && klass <= Node
+		end
+		true
+	end
+
 	def self.parse(sql)
 		Parser.new(sql).parse
 	end
