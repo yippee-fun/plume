@@ -23,6 +23,7 @@ module Plume
 			def each(&) = @sorted_properties.each(&)
 			def size = @sorted_properties.size
 			def empty? = @sorted_properties.empty?
+			def <<(property) = raise(FrozenError, "cannot add #{property.name} after Plume.eager_load! has frozen the props")
 
 			# Literal starts the schema of a subclass from a dup of its parent's
 			def dup = Literal::Properties::Schema.new(properties_index: @properties_index.dup, sorted_properties: @sorted_properties.dup)
@@ -30,8 +31,11 @@ module Plume
 
 		def self.literal_properties
 			@shareable_literal_properties || super
-		rescue Ractor::IsolationError
-			raise Ractor::IsolationError, "#{name} is not shareable yet, call Plume.eager_load! from the main Ractor first"
+		rescue => error
+			raise unless defined?(Ractor::IsolationError) && Ractor::IsolationError === error
+
+			raise Ractor::IsolationError, "#{name} is not shareable yet, call Plume.eager_load! from the main Ractor first " \
+				"(or #{name}.make_shareable! for a class defined after it)"
 		end
 
 		def self.make_shareable!

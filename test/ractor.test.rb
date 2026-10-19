@@ -23,7 +23,13 @@ class Quickdraw::Test
 	def in_ractors(count, *args, &block)
 		experimental, Warning[:experimental] = Warning[:experimental], false
 		ractors = Array.new(count) { Ractor.new(*args, &block) }
-		ractors.map { |r| r.respond_to?(:value) ? r.value : r.take }
+		# Every Ractor is joined, so one that fails does not leave the others running
+		results = ractors.map do |r|
+			r.respond_to?(:value) ? r.value : r.take
+		rescue Ractor::RemoteError => error
+			error
+		end
+		results.each { |result| raise result if Ractor::RemoteError === result }
 	ensure
 		Warning[:experimental] = experimental
 	end
@@ -132,4 +138,16 @@ test "every Plume constant and node class can be read from a Ractor after eager_
 
 	counts = in_ractors(1, nodes) { |classes| classes.map { |klass| klass.literal_properties.size } }.first
 	assert_equal counts, nodes.map { |klass| klass.literal_properties.size }
+end
+
+test "a node class defined after eager_load! works in a Ractor once made shareable" do
+	klass = Class.new(Plume::ColumnName).make_shareable!
+
+	assert_equal in_ractors(1, klass) { |k| k.new(column: "x").column }.first, "x"
+end
+
+test "adding a prop to a node class after eager_load! says why it cannot" do
+	error = assert_raises(FrozenError) { Plume::ColumnName.prop(:extra, String) }
+
+	assert error.message.include?("Plume.eager_load!")
 end
