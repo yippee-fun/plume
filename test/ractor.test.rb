@@ -29,27 +29,25 @@ class Quickdraw::Test
 	end
 
 	def ractor_catalog = Ractor.make_shareable(Plume::Catalog.from_sql(RACTOR_SCHEMA))
+end
 
-	def syntax_summary(sql)
+# On a module, so the main Ractor and the Ractors under test compute the same summaries
+module RactorSummary
+	def self.syntax(sql)
 		tree = Plume.parse(sql)
 		[Plume.tokenize(sql), tree.map(&:to_sql), tree.flat_map { |s| s.each_node.map { |n| n.class.name } }]
 	end
 
-	def access_summary(sql, catalog)
+	def self.access(sql, catalog)
 		access = Plume.access(sql, catalog:)
-		[access.reads.columns(:projected), access.reads.columns(:referenced), access.writes.columns, access.writes.tables]
+		[access.reads.projected, access.reads.referenced, access.writes.columns, access.writes.tables]
 	end
 end
 
 test "tokenize, parse, to_sql and walk in several Ractors at once give the same results as in the main Ractor" do
-	results = in_ractors(4, RACTOR_SQL) do |sqls|
-		sqls.map do |sql|
-			tree = Plume.parse(sql)
-			[Plume.tokenize(sql), tree.map(&:to_sql), tree.flat_map { |s| s.each_node.map { |n| n.class.name } }]
-		end
-	end
+	results = in_ractors(4, RACTOR_SQL) { |sqls| sqls.map { |sql| RactorSummary.syntax(sql) } }
 
-	expected = RACTOR_SQL.map { |sql| syntax_summary(sql) }
+	expected = RACTOR_SQL.map { |sql| RactorSummary.syntax(sql) }
 	results.each { |result| assert_equal result, expected }
 end
 
@@ -78,25 +76,21 @@ test "a catalog made shareable in the main Ractor serves reads and access in sev
 	catalog = ractor_catalog
 	assert Ractor.shareable?(catalog)
 
-	results = in_ractors(4, RACTOR_SQL.first(6), catalog) do |sqls, cat|
-		sqls.map do |sql|
-			access = Plume.access(sql, catalog: cat)
-			[access.reads.columns(:projected), access.reads.columns(:referenced), access.writes.columns, access.writes.tables]
-		end
-	end
+	results = in_ractors(4, RACTOR_SQL.first(6), catalog) { |sqls, cat| sqls.map { |sql| RactorSummary.access(sql, cat) } }
 
-	expected = RACTOR_SQL.first(6).map { |sql| access_summary(sql, catalog) }
+	expected = RACTOR_SQL.first(6).map { |sql| RactorSummary.access(sql, catalog) }
 	results.each { |result| assert_equal result, expected }
 	# The view is read through to the tables under it
-	assert_equal expected[2][0].transform_values(&:sort), { "teams" => ["name"], "users" => ["email"] }
+	assert_equal sorted(expected[2][0]), { "teams" => ["name"], "users" => ["email"] }
 end
 
 test "Plume.reads in a Ractor returns references to the nodes they were found at" do
-	reads = in_ractors(1, ractor_catalog) do |cat|
+	catalog = ractor_catalog
+	reads = in_ractors(1, catalog) do |cat|
 		Plume.reads("SELECT email FROM users WHERE id = 1", catalog: cat)
 	end.first
 
-	expected = Plume.reads("SELECT email FROM users WHERE id = 1", catalog: ractor_catalog)
+	expected = Plume.reads("SELECT email FROM users WHERE id = 1", catalog:)
 	assert_equal reads.references.map { |r| [r.table, r.column, r.usage, r.node.to_sql] },
 		expected.references.map { |r| [r.table, r.column, r.usage, r.node.to_sql] }
 	assert_equal reads.references.map(&:node), expected.references.map(&:node)
@@ -115,7 +109,7 @@ test "a tree made shareable can still be read, printed, walked and analyzed" do
 	refute_equal statement.location, nil
 
 	reads = Plume::Analysis::Resolver.new(catalog: ractor_catalog).analyze(statement).reads
-	assert_equal reads.columns.transform_values(&:sort), { "teams" => ["id", "name"], "users" => ["email", "team_id"] }
+	assert_equal sorted(reads.columns), { "teams" => ["id", "name"], "users" => ["email", "team_id"] }
 
 	printed = in_ractors(2, statement) { |s| [s.to_sql, s.each_node.count] }
 	printed.each { |result| assert_equal result, [statement.to_sql, statement.each_node.count] }

@@ -11,7 +11,7 @@ module Plume
 			[:NOT, :DEFERRABLE, :INITIALLY, :DEFERRED].freeze  => false,
 			[:NOT, :DEFERRABLE, :INITIALLY, :IMMEDIATE].freeze => false,
 		}.freeze
-		Deferrable = Plume.make_shareable(_Union(*TOKEN_TO_DEFERRABLE.values.uniq))
+		Deferrable = _Union(*TOKEN_TO_DEFERRABLE.values.uniq)
 
 		token :references_kw
 		token :table_tk
