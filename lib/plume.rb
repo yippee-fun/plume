@@ -153,9 +153,10 @@ module Plume
 		# Node constructors and type errors reach for these, and Ruby 3.3 cannot autoload outside the main Ractor.
 		# Not every Literal version has all of them
 		%i[Null TypeError ArgumentError].each { |name| Literal.const_get(name) if Literal.const_defined?(name) }
-		# Expression's `_Deferred` resolves its types on first use, which a frozen one may not get to do
+		# Literal versions that cache a `_Deferred` do so on first use, which a frozen one cannot do.
+		# Each node's schema then shares Expression with the rest of its prop types
 		Expression === nil
-		make_shareable(Expression)
+		make_shareable(Token::Tuple)
 		constants.each do |name|
 			klass = const_get(name)
 			klass.make_shareable! if Class === klass && klass <= Node

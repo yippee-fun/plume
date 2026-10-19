@@ -19,7 +19,7 @@ module Plume
 			:variable,
 		)
 
-		Tuple = Plume.make_shareable(_Tuple(_Union(Symbol, _Array(Symbol)), Integer, Integer, Type))
+		Tuple = _Tuple(_Union(Symbol, _Array(Symbol)), Integer, Integer, Type)
 
 		def Keyword(arg)
 			[*arg, :keyword] if arg

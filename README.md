@@ -263,7 +263,7 @@ ractors = queries.each_slice(100).map do |batch|
     sqls.map { |sql| Plume.reads(sql, catalog: cat, strict: false).columns }
   end
 end
-ractors.flat_map(&:take) # `value` on Ruby 3.5+
+ractors.flat_map(&:value) # `take` before Ruby 4.0
 ```
 
 `tokenize`, `parse`, `to_sql`, `walk`, `reads` and `access` all work inside a Ractor. Trees and results come back out like any other object, and a tree passed through `Ractor.make_shareable` can still be read, printed, walked and analyzed - it just can no longer be edited. After `eager_load!` the node classes cannot be given new props.
