@@ -25,13 +25,11 @@ jobs:
         ruby-version: ${{ fromJson(needs.ruby-versions.outputs.versions) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
-      - name: Install dependencies
-        run: bundle install --without development
       - name: Quickdraw tests
         run: bundle exec qt -t 1 "./test/**/*.test.rb"
