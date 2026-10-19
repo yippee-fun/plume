@@ -14,7 +14,7 @@ jobs:
     uses: ruby/actions/.github/workflows/ruby_versions.yml@f0adcbc13299b38a289a1c914af4ad137ca6bb54
     with:
       engine: all
-      min_version: 3.1
+      min_version: 3.2
 
   test:
     needs: ruby-versions

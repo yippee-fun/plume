@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
 	spec.description = "Plume is a Ruby library that allows you to write SQLite's dialect of SQL with structured Ruby."
 	spec.homepage = "https://github.com/fractaledmind/plume"
 	spec.license = "MIT"
-	spec.required_ruby_version = ">= 3.1.0"
+	spec.required_ruby_version = ">= 3.2.0"
 
 	spec.metadata["homepage_uri"] = spec.homepage
 	spec.metadata["source_code_uri"] = spec.homepage
