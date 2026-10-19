@@ -35,9 +35,9 @@ module Plume
 		end
 
 		def self.make_shareable!
-			@shareable_literal_properties = Ractor.make_shareable(ShareableSchema.new(literal_properties))
-			Ractor.make_shareable(@inspectable_props)
-			Ractor.make_shareable(@token_names)
+			@shareable_literal_properties = Plume.make_shareable(ShareableSchema.new(literal_properties))
+			Plume.make_shareable(@inspectable_props)
+			Plume.make_shareable(@token_names)
 			self
 		end
 

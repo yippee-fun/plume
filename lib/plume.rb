@@ -8,6 +8,9 @@ module Plume
 	extend Literal::Types
 	extend Union::Types
 
+	# JRuby and TruffleRuby have no Ractors, so there is nothing to make shareable for
+	def self.make_shareable(obj) = defined?(Ractor) ? Ractor.make_shareable(obj) : obj
+
 	autoload :Lexer, "plume/lexer"
 	autoload :Parser, "plume/parser"
 	autoload :Token, "plume/ast/token"
