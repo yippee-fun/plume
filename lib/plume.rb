@@ -150,6 +150,8 @@ module Plume
 		# SQLiteGrammar is a development tool which pulls in net/http
 		(constants - [:SQLiteGrammar]).each { |name| const_get(name) if autoload?(name) }
 		Analysis::Resolver
+		# Node constructors and type errors reach for these, and Ruby 3.3 cannot autoload outside the main Ractor
+		[Literal::Null, Literal::TypeError, Literal::ArgumentError]
 		constants.each do |name|
 			klass = const_get(name)
 			klass.make_shareable! if Class === klass && klass <= Node
