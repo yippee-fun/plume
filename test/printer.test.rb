@@ -2,7 +2,7 @@
 
 test "keywords come out upper case, compound operands parenthesized" do
 	assert_equal parse_stmt("select a+b*c, not x or y from t where a between 1 and 2 limit 5, 10").to_sql,
-		"SELECT a + (b * c), (NOT x) OR y FROM t WHERE a BETWEEN 1 AND 2 LIMIT 10 OFFSET 5"
+		"SELECT a + (b * c), (NOT x) OR y FROM t WHERE a BETWEEN 1 AND 2 LIMIT 5, 10"
 end
 
 test "identifiers are quoted only when they have to be" do

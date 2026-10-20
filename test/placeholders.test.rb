@@ -11,3 +11,14 @@ end
 test "numbered parameters at either end of the range parse" do
 	assert_equal parse_stmt("SELECT ?1, ?01, ?32766").to_sql, "SELECT ?1, ?01, ?32766"
 end
+
+# `LIMIT ?, ?` binds the offset first. Printed as `LIMIT ? OFFSET ?` it would bind the limit first
+test "LIMIT with a comma keeps its parameters in order" do
+	[
+		"SELECT a FROM t LIMIT ?, ?",
+		"SELECT a FROM t ORDER BY a LIMIT :offset, ?",
+		"UPDATE t SET a = 1 LIMIT ?, ?",
+		"DELETE FROM t LIMIT ?, ?",
+	].each { |sql| assert_equal parse_stmt(sql).to_sql, sql }
+	assert_equal parse_stmt("SELECT a FROM t LIMIT ? OFFSET ?").to_sql, "SELECT a FROM t LIMIT ? OFFSET ?"
+end
