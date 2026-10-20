@@ -18,6 +18,7 @@ fixtures/sqlite-traced/altercons2-df2c06eafb.sql
 fixtures/sqlite-traced/bind-1070b471ac.sql
 fixtures/sqlite-traced/bind-249207389f.sql
 fixtures/sqlite-traced/bind-9e0566f803.sql
+fixtures/sqlite-traced/bind-bd0e3350ac.sql
 fixtures/sqlite-traced/blob-074ad487a5.sql
 fixtures/sqlite-traced/blob-074b226bd1.sql
 fixtures/sqlite-traced/blob-31f6f60b11.sql

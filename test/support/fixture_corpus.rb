@@ -48,7 +48,7 @@ module FixtureCorpus
 	SQLITE_SYNTAX_ERROR = Regexp.union(
 		"syntax error", "unrecognized token", "incomplete input", "clause should come after",
 		"is required before", "unknown join type", "unknown table option", "prohibited in PRIMARY KEY",
-		"unsupported frame specification",
+		"unsupported frame specification", "variable number must be between",
 	)
 
 	# Whether SQLite itself rejects the fixture as malformed - the corpus comes from SQLite's
