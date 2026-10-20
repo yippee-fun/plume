@@ -113,7 +113,8 @@ module Plume
 				elsif statement.columns
 					statement.columns.each { |column| write(target, column.column, :insert, column) }
 				elsif target&.columns
-					target.columns.each { |column| write(target, column, :insert, statement.table) }
+					# A VALUES row without a column list has no slot for generated columns
+					(target.columns - (target.table&.generated_columns || [])).each { |column| write(target, column, :insert, statement.table) }
 				else
 					write(target, "*", :insert, statement.table)
 				end

@@ -2,7 +2,8 @@
 
 module Plume
 	# Static analysis on top of the AST. The first question it answers is "which tables and
-	# columns would this statement read?", see `Plume.reads`.
+	# columns would this statement read?", see `Plume.reads`; the second is what it would
+	# write, see `Plume.writes`.
 	module Analysis
 		autoload :Resolver, "plume/analysis/resolver"
 
@@ -110,6 +111,11 @@ module Plume
 		# With `strict: true` (the default) anything that cannot be attributed raises
 		# `Plume::Analysis::Error`; with `strict: false` it is listed in `Reads#unresolved` instead.
 		def self.reads(sql, catalog: nil, strict: true) = access(sql, catalog:, strict:).reads
+
+		# Which tables and columns an INSERT, UPDATE or DELETE would write, with the same arguments
+		# and strictness as `reads`. A SELECT writes nothing. Triggers are not looked into, so rows
+		# they write elsewhere - or the rows a REPLACE deletes - are not reported.
+		def self.writes(sql, catalog: nil, strict: true) = access(sql, catalog:, strict:).writes
 
 		# Like `reads`, but also reports what an INSERT, UPDATE or DELETE writes
 		def self.access(sql, catalog: nil, strict: true)

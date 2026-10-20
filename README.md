@@ -242,7 +242,24 @@ access.reads.referenced # => {"users" => #<Set: {"id"}>, "posts" => #<Set: {"use
 
 A value copied into a column being written counts as projected, just like one returned in the result rows.
 
-Both also take what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed.
+When you only care about the writes, `Plume.writes` takes the same arguments and gives you `access.writes` directly:
+
+```ruby
+writes = Plume.writes(<<~SQL, catalog: catalog)
+  INSERT INTO posts (user_id, title) VALUES (?, ?)
+  ON CONFLICT (id) DO UPDATE SET title = excluded.title
+SQL
+
+writes.tables   # => #<Set: {"posts"}>
+writes.columns  # => {"posts" => #<Set: {"user_id", "title"}>}
+writes.inserted # => {"posts" => #<Set: {"user_id", "title"}>}
+writes.updated  # => {"posts" => #<Set: {"title"}>}
+writes.deleted  # tables a DELETE removes rows from, as a whole
+```
+
+An INSERT without a column list writes every column of the table except generated ones (`"*"` without a catalog), and `DEFAULT VALUES` writes the table but names no columns. A SELECT writes nothing. Triggers are not looked into, so what they write elsewhere is not reported, and neither are the rows a REPLACE deletes to make room.
+
+All three also take what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed.
 
 The catalog can also come from a live database with `Plume::Catalog.from_sqlite(db)`, or be left out - then `SELECT *` is reported as a read of the column `"*"` and unqualified columns only resolve when there is a single table in scope.
 
