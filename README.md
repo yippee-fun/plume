@@ -259,7 +259,7 @@ writes.deleted  # tables a DELETE removes rows from, as a whole
 
 An INSERT without a column list writes every column of the table except generated ones (`"*"` without a catalog), and `DEFAULT VALUES` writes the table but names no columns. A SELECT writes nothing. Triggers are not looked into, so what they write elsewhere is not reported, and neither are the rows a REPLACE deletes to make room.
 
-Both also take what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed.
+All three also take what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed.
 
 The catalog can also come from a live database with `Plume::Catalog.from_sqlite(db)`, or be left out - then `SELECT *` is reported as a read of the column `"*"` and unqualified columns only resolve when there is a single table in scope.
 
