@@ -2,7 +2,7 @@
 
 [![Gem Version](https://badge.fury.io/rb/plume.svg)](https://rubygems.org/gems/plume)
 [![Gem Downloads](https://img.shields.io/gem/dt/plume)](https://rubygems.org/gems/plume)
-![Tests](https://github.com/fractaledmind/plume/actions/workflows/main.yml/badge.svg)
+![Tests](https://github.com/yippee-fun/plume/actions/workflows/main.yml/badge.svg)
 [![Sponsors](https://img.shields.io/github/sponsors/fractaledmind?color=eb4aaa&logo=GitHub%20Sponsors)](https://github.com/sponsors/fractaledmind)
 [![Twitter Follow](https://img.shields.io/twitter/url?label=%40fractaledmind&style=social&url=https%3A%2F%2Ftwitter.com%2Ffractaledmind)](https://twitter.com/fractaledmind)
 
@@ -302,7 +302,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/fractaledmind/plume. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/fractaledmind/plume/blob/main/CODE_OF_CONDUCT.md).
+Bug reports and pull requests are welcome on GitHub at https://github.com/yippee-fun/plume. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/yippee-fun/plume/blob/main/CODE_OF_CONDUCT.md).
 
 ## License
 
@@ -310,4 +310,4 @@ The gem is available as open source under the terms of the [MIT License](https:/
 
 ## Code of Conduct
 
-Everyone interacting in the Plume project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/fractaledmind/plume/blob/main/CODE_OF_CONDUCT.md).
+Everyone interacting in the Plume project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/yippee-fun/plume/blob/main/CODE_OF_CONDUCT.md).

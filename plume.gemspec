@@ -8,15 +8,15 @@ Gem::Specification.new do |spec|
 	spec.authors = ["Stephen Margheim", "Joel Drapper"]
 	spec.email = ["stephen.margheim@gmail.com", "joel@drapper.me"]
 
-	spec.summary = "Work with SQLite elegantly"
-	spec.description = "Plume is a Ruby library that allows you to write SQLite's dialect of SQL with structured Ruby."
-	spec.homepage = "https://github.com/fractaledmind/plume"
+	spec.summary = "Parse, analyze and print SQLite's dialect of SQL"
+	spec.description = "Plume parses any statement in SQLite's grammar into a syntax tree you can walk, change and print back to SQL, and tells you which tables and columns a statement reads and writes."
+	spec.homepage = "https://github.com/yippee-fun/plume"
 	spec.license = "MIT"
 	spec.required_ruby_version = ">= 3.2.0"
 
 	spec.metadata["homepage_uri"] = spec.homepage
 	spec.metadata["source_code_uri"] = spec.homepage
-	spec.metadata["changelog_uri"] = "https://github.com/fractaledmind/plume/releases"
+	spec.metadata["changelog_uri"] = "https://github.com/yippee-fun/plume/blob/main/CHANGELOG.md"
 	spec.metadata["funding_uri"] = "https://github.com/sponsors/fractaledmind"
 
 	spec.files = Dir[
