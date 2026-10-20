@@ -68,6 +68,15 @@ test "update users as u set team_id = t.id from teams t where t.name = u.email r
 	assert_equal sorted(a.reads.projected), { "teams" => ["id"], "users" => ["email", "id", "secret", "team_id"] }
 end
 
+test "update users set secret = t.name from (select name from teams) as t" do
+	a = access("update users set secret = t.name from (select name from teams) as t")
+
+	# No column of users is named, but every row of it is paired with the FROM's, as SQLite's authorizer reports
+	assert_equal a.reads.tables, Set["teams", "users"]
+	assert_equal sorted(a.reads.columns), { "teams" => ["name"] }
+	assert_equal access("update users set secret = 1").reads.tables, Set[]
+end
+
 test "update users set (email, secret) = (select name, name from teams)" do
 	assert_equal sorted(access("update users set (email, secret) = (select name, name from teams)").writes.updated),
 		{ "users" => ["email", "secret"] }
