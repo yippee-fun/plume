@@ -12,6 +12,9 @@
 - Fixed: `a IN (…) AND b` and friends stopped after the IN/BETWEEN/LIKE/GLOB; quotes doubled inside strings and identifiers were not unescaped; a column type following a REFERENCES clause came out empty
 - A tree built by hand can hold plain numbers and strings, which print as the literals they spell; numbers SQL has no literal for (Rational, Complex, NaN, infinity) raise instead of printing as something else
 - Fixed: a `ForeignKeyAction` could not be built by hand
+- Fixed: numbers with a misplaced digit separator (`1_`, `12__34`, `0xFFEF_`) parsed, and `#` followed by a digit parsed as a bind parameter; SQLite rejects both
+- Fixed: hex literals evaluated to 0, and digit-separated whole numbers lost precision; hex now reads as a 64-bit two's-complement integer, as in SQLite
+- A statement nested too deeply to parse raises `Plume::SyntaxError` instead of `SystemStackError`
 - Building a tree is no longer quadratic in its size, on Ruby 4 included
 - `literal` is now declared as a runtime dependency
 
