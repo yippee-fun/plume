@@ -6,6 +6,45 @@ module Plume
 
 		Stringy = _Union(String, Symbol)
 
+		# Literal keeps the props of a class in a Schema guarded by a Mutex, and a Mutex can never be
+		# shared - so outside the main Ractor every node constructor raises. Once all props are
+		# declared, `Plume.eager_load!` swaps in this frozen stand-in, which has the same readers
+		class ShareableSchema
+			include Enumerable
+
+			attr_reader :properties_index
+
+			def initialize(schema)
+				@properties_index = schema.properties_index.dup
+				@sorted_properties = schema.to_a
+			end
+
+			def [](key) = @properties_index[key]
+			def each(&) = @sorted_properties.each(&)
+			def size = @sorted_properties.size
+			def empty? = @sorted_properties.empty?
+			def <<(property) = raise(FrozenError, "cannot add #{property.name} after Plume.eager_load! has frozen the props")
+
+			# Literal starts the schema of a subclass from a dup of its parent's
+			def dup = Literal::Properties::Schema.new(properties_index: @properties_index.dup, sorted_properties: @sorted_properties.dup)
+		end
+
+		def self.literal_properties
+			@shareable_literal_properties || super
+		rescue => error
+			raise unless defined?(Ractor::IsolationError) && Ractor::IsolationError === error
+
+			raise Ractor::IsolationError, "#{name} is not shareable yet, call Plume.eager_load! from the main Ractor first " \
+				"(or #{name}.make_shareable! for a class defined after it)"
+		end
+
+		def self.make_shareable!
+			@shareable_literal_properties = Plume.make_shareable(ShareableSchema.new(literal_properties))
+			Plume.make_shareable(@inspectable_props)
+			Plume.make_shareable(@token_names)
+			self
+		end
+
 		prop :full_source, _Nilable(String)
 		prop :leading, _Nilable(Token)
 		prop :trailing, _Nilable(Token)
@@ -195,13 +234,14 @@ module Plume
 			define_node_reader(name)
 		end
 
-		# Absent children read as nil rather than the LiteralNil default
+		# Absent children read as nil rather than the LiteralNil default. Evaluated from a string
+		# because a method defined with a block cannot be called from another Ractor
 		def self.define_node_reader(name)
-			ivar = :"@#{name}"
-			define_method(name) do
-				value = instance_variable_get(ivar)
-				LiteralNil.equal?(value) ? nil : value
-			end
+			class_eval <<-RUBY, __FILE__, __LINE__ + 1
+				def #{name}
+					LiteralNil.equal?(@#{name}) ? nil : @#{name}
+				end
+			RUBY
 		end
 	end
 end

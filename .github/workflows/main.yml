@@ -31,13 +31,18 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+      # The Ractor tests call Plume.eager_load!, which freezes every node class, so they get a process of their own
       - name: Quickdraw tests
         if: ${{ !startsWith(matrix.ruby-version, 'jruby') }}
-        run: bundle exec qt -t 1 "./test/**/*.test.rb"
+        run: bundle exec qt -t 1 $(ls test/*.test.rb | grep -v -e ractor.test.rb)
       # sqlite3 is a C extension, so JRuby skips the tests that check Plume against SQLite itself
       - name: Quickdraw tests (without SQLite)
         if: ${{ startsWith(matrix.ruby-version, 'jruby') }}
-        run: bundle exec qt -t 1 $(ls test/*.test.rb | grep -v -e fts.test.rb -e reads_oracle.test.rb)
+        run: bundle exec qt -t 1 $(ls test/*.test.rb | grep -v -e ractor.test.rb -e fts.test.rb -e reads_oracle.test.rb)
+      # TruffleRuby and JRuby have no Ractors
+      - name: Ractor tests
+        if: ${{ !startsWith(matrix.ruby-version, 'jruby') && !startsWith(matrix.ruby-version, 'truffleruby') }}
+        run: bundle exec qt -t 1 test/ractor.test.rb
 
   lint:
     runs-on: ubuntu-latest

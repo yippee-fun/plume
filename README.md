@@ -251,6 +251,24 @@ Anything that cannot be attributed (an unknown table or column, an ambiguous nam
 
 The results are tested against SQLite's own [authorizer callback](https://www.sqlite.org/c3ref/set_authorizer.html), which is also the place to enforce access rules at runtime when you have a connection. `Plume.reads` is for when you want to vet SQL ahead of time, without a database, or with good error messages. It reports one thing the authorizer does not: the right-hand join columns of `USING` and `NATURAL` joins.
 
+### Ractors
+
+Plume loads its parts lazily, and Ractors other than the main one cannot read the class-level state that leaves behind. Call `Plume.eager_load!` once from the main Ractor before starting any, and freeze the catalog with `Ractor.make_shareable` so it can be passed in:
+
+```ruby
+Plume.eager_load!
+catalog = Ractor.make_shareable(Plume::Catalog.from_sql(schema_sql))
+
+ractors = queries.each_slice(100).map do |batch|
+  Ractor.new(batch, catalog) do |sqls, cat|
+    sqls.map { |sql| Plume.reads(sql, catalog: cat, strict: false).columns }
+  end
+end
+ractors.flat_map(&:value) # `take` before Ruby 4.0
+```
+
+`tokenize`, `parse`, `to_sql`, `walk`, `reads` and `access` all work inside a Ractor. Trees and results come back out like any other object, and a tree passed through `Ractor.make_shareable` can still be read, printed, walked and analyzed - it just can no longer be edited. After `eager_load!` the node classes cannot be given new props.
+
 ## Roadmap
 
 - [x] `expression`

@@ -17,6 +17,7 @@
 - A statement nested too deeply to parse raises `Plume::SyntaxError` instead of `SystemStackError`
 - Building a tree is no longer quadratic in its size, on Ruby 4 included
 - `literal` is now declared as a runtime dependency
+- `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
 
 ## [0.1.0] - 2024-03-22
 
