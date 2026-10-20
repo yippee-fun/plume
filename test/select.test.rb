@@ -408,3 +408,8 @@ test "a separator with no item after it is a syntax error" do
 		assert_raises(Plume::SyntaxError) { Plume.parse(sql) }
 	end
 end
+
+test "NULLS takes only FIRST or LAST after it" do
+	assert_raises(Plume::SyntaxError) { Plume.parse("SELECT a FROM t ORDER BY a NULLS b") }
+	assert_raises(Plume::SyntaxError) { Plume.parse("SELECT a FROM t ORDER BY a DESC NULLS") }
+end

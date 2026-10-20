@@ -87,3 +87,28 @@ test "long OR, mixed-operator and UNION ALL chains round trip on a thread" do
 	round_trip("SELECT 0#{(1..6000).map { |i| i.odd? ? " - #{i}" : " + #{i}" }.join}")
 	round_trip((1..600).map { |i| "SELECT #{i}" }.join(" UNION ALL "))
 end
+
+test "a name that is not valid UTF-8 prints quoted" do
+	sql = (+"SELECT \xFFa FROM t").force_encoding(Encoding::UTF_8)
+
+	assert_equal Plume.parse(sql).first.to_sql, (+"SELECT \"\xFFa\" FROM t").force_encoding(Encoding::UTF_8)
+	round_trip(sql)
+end
+
+test "a collation whose name is not valid UTF-8 prints back" do
+	[
+		"SELECT a COLLATE n\xFF FROM t",
+		"SELECT a FROM t ORDER BY a COLLATE n\xFF",
+		"CREATE TABLE t (a COLLATE n\xFF)",
+		"CREATE INDEX i ON t (a COLLATE n\xFF)",
+	].each do |sql|
+		round_trip(sql.dup.force_encoding(Encoding::UTF_8))
+	end
+end
+
+test "a tree too deep for the printer's stack is a printer error" do
+	expression = Plume::ColumnName.new(column: "a")
+	100_000.times { expression = Plume::UnaryExpression.new(operator: :NOT, operand: expression) }
+
+	assert_raises(Plume::Printer::Error) { expression.to_sql }
+end

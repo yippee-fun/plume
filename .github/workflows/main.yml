@@ -37,7 +37,7 @@ jobs:
       # sqlite3 is a C extension, so JRuby skips the tests that check Plume against SQLite itself
       - name: Quickdraw tests (without SQLite)
         if: ${{ startsWith(matrix.ruby-version, 'jruby') }}
-        run: bundle exec qt -t 1 $(ls test/*.test.rb | grep -v -e fts.test.rb -e reads_oracle.test.rb)
+        run: bundle exec qt -t 1 $(ls test/*.test.rb | grep -v -e fts.test.rb -e reads_oracle.test.rb -e fuzz_identifiers.test.rb)
 
   lint:
     runs-on: ubuntu-latest

@@ -42,7 +42,7 @@ module Plume
 		# Tables in the main schema are keyed by their bare name, any other schema
 		# (temp, attached databases) is spelled out as "schema.table"
 		def self.table_key(schema, table)
-			(schema.nil? || schema.casecmp?("main")) ? table : "#{schema}.#{table}"
+			(schema.nil? || schema.casecmp("main")&.zero?) ? table : "#{schema}.#{table}"
 		end
 
 		class References
@@ -126,7 +126,12 @@ module Plume
 				raise Error, "only SELECT, INSERT, UPDATE and DELETE can be analyzed, got #{statement.class.name}"
 			end
 
-			access = Resolver.new(catalog:).analyze(statement)
+			access = begin
+				Resolver.new(catalog:).analyze(statement)
+			rescue *STACK_EXHAUSTED
+				# As with parsing, how deep the resolver can go depends on the stack the caller has left
+				raise Error, "statement nested too deeply"
+			end
 			raise Error.new(unresolved: access.unresolved) if strict && !access.resolved?
 
 			access

@@ -20,7 +20,8 @@ class AuthorizerOracle
 		@catalog = Plume::Catalog.from_sqlite(@db)
 		@events = []
 		@db.authorizer = proc do |action, table, column, *|
-			@events << [action, table, column]
+			# The names come as bytes, and are UTF-8 since the schema was
+			@events << [action, table&.dup&.force_encoding(Encoding::UTF_8), column&.dup&.force_encoding(Encoding::UTF_8)]
 			0
 		end
 	end
@@ -32,7 +33,8 @@ class AuthorizerOracle
 	def reads(sql)
 		@events.clear
 		@db.prepare(sql).close
-		known = @catalog.tables.to_h { |t| [t.name.downcase, t.name] }
+		# SQLite folds the case of ASCII letters only
+		known = @catalog.tables.to_h { |t| [t.name.downcase(:ascii), t.name] }
 
 		tables = Set.new
 		columns = Hash.new { |h, k| h[k] = Set.new }
@@ -41,7 +43,7 @@ class AuthorizerOracle
 		deleted = Set.new
 		# For INSERT and DELETE the table comes as the first argument, the second is the schema
 		@events.each do |action, table, column|
-			next unless table && (name = known[table.downcase])
+			next unless table && (name = known[table.downcase(:ascii)])
 
 			case action
 			when SQLITE_INSERT then inserted << name

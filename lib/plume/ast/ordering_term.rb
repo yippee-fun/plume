@@ -25,7 +25,7 @@ module Plume
 		def self.new(*, **) = super
 		def self.concrete(*, **) = super
 
-		def collation = (@collation == LiteralNil) ? collation_tk_val&.to_sym&.upcase : @collation
+		def collation = (@collation == LiteralNil) ? Node.collation_name(collation_tk_val) : @collation
 		def direction = (@direction == LiteralNil) ? direction_tk_val&.to_sym&.upcase : @direction
 		def nulls = (@nulls == LiteralNil) ? nulls_tk_val&.to_sym&.upcase : @nulls
 	end

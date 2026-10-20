@@ -201,7 +201,7 @@ module Plume
 		# Maps ASCII characters to their respective character types
 		# Each element's index maps to the byte value of that character
 		CHARACTER_TYPES = %i[
-			NULL			ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL
+			NUL				ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL
 			ILLEGAL		SPACE			SPACE			ILLEGAL		SPACE			SPACE			ILLEGAL		ILLEGAL
 			ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL
 			ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL		ILLEGAL
@@ -604,7 +604,7 @@ module Plume
 
 				:ID
 			when :BOM
-				return step(2) && :SPACE if peek == 0xFE && peek(1) == 0xFF
+				return step(2) && :SPACE if peek == 0xBB && peek(1) == 0xBF
 
 				step while id?(peek)
 				:ID

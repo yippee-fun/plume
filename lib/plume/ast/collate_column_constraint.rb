@@ -14,6 +14,6 @@ module Plume
 		def self.concrete(*, collate_kw:, collation_tk:, **) = super
 
 		def name = (@name == LiteralNil) ? name_tk_val : @name
-		def collation = (@collation == LiteralNil) ? collation_tk_val&.to_sym&.upcase : @collation
+		def collation = (@collation == LiteralNil) ? Node.collation_name(collation_tk_val) : @collation
 	end
 end

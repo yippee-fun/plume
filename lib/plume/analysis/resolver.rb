@@ -19,18 +19,18 @@ module Plume
 				def self.table(name, table, node) = new(name:, kind: :table, schema: table.schema, table:, columns: table.columns, node:)
 
 				def matches?(qualifier, schema_qualifier)
-					return false unless name&.casecmp?(qualifier)
+					return false unless name&.casecmp(qualifier)&.zero?
 					return true unless schema_qualifier
 
-					schema&.casecmp?(schema_qualifier) || (schema.nil? && schema_qualifier.casecmp?("main"))
+					schema&.casecmp(schema_qualifier)&.zero? || (schema.nil? && schema_qualifier.casecmp("main")&.zero?)
 				end
 
 				def column(name)
 					return unless columns
 					return table.column(name) if table
 
-					needle = name.downcase
-					columns.find { |c| c&.downcase == needle }
+					needle = name.downcase(:ascii)
+					columns.find { |c| c&.downcase(:ascii) == needle }
 				end
 			end
 
@@ -57,6 +57,9 @@ module Plume
 			}.freeze
 
 			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement].freeze
+
+			# SQLite's own limit, which also keeps resolving names across a join from going quadratic
+			MAX_JOIN_TABLES = 64
 
 			def initialize(catalog: nil)
 				@catalog = catalog
@@ -93,7 +96,7 @@ module Plume
 			def with_scope(with_clause, parent)
 				scope = Scope.new(sources: [], parent:, ctes: {})
 				with_clause&.ctes&.each do |cte|
-					scope.ctes[cte.name.downcase] = Cte.new(node: cte, scope:, analyzed: Set.new)
+					scope.ctes[cte.name.downcase(:ascii)] = Cte.new(node: cte, scope:, analyzed: Set.new)
 				end
 				scope
 			end
@@ -135,7 +138,7 @@ module Plume
 				outer = with_scope(statement.with_clause, nil)
 				scope = Scope.new(sources: [], parent: outer, ctes: {}, aliases: {})
 				target = add_target(statement.table, scope)
-				add_source(statement.source, scope, :projected) if statement.source
+				add_from(statement.source, scope, :projected) if statement.source
 
 				assign(statement.assignments, target, scope)
 				expression(statement.condition, scope, :referenced)
@@ -249,10 +252,10 @@ module Plume
 					return [Array.new(width) { |i| "column#{i + 1}" }, scope]
 				end
 
-				add_source(core.source, scope, usage) if core.source
+				add_from(core.source, scope, usage) if core.source
 
 				core.columns.each do |column|
-					scope.aliases[column.alias.downcase] = column.result if ResultColumn === column && column.alias
+					scope.aliases[column.alias.downcase(:ascii)] = column.result if ResultColumn === column && column.alias
 				end
 
 				names = []
@@ -288,6 +291,14 @@ module Plume
 
 			# -- FROM
 
+			def add_from(source, scope, usage)
+				add_source(source, scope, usage)
+				tables = scope.sources.sum { |s| join_tables(s) }
+				raise Error, "at most #{MAX_JOIN_TABLES} tables in a join" if tables > MAX_JOIN_TABLES
+			end
+
+			def join_tables(source) = (source.kind == :group) ? source.inner_sources.sum { |s| join_tables(s) } : 1
+
 			def add_source(source, scope, usage)
 				case source
 				when JoinClause
@@ -307,10 +318,10 @@ module Plume
 						return
 					end
 
-					@reads.functions << source.function.downcase
+					@reads.functions << source.function.downcase(:ascii)
 					scope.sources << Source.new(
 						name: source.alias || source.function, kind: :function,
-						columns: FUNCTION_COLUMNS[source.function.downcase], node: source,
+						columns: FUNCTION_COLUMNS[source.function.downcase(:ascii)], node: source,
 					)
 				when SubquerySource
 					# A FROM subquery sees the enclosing queries, but not its siblings in this FROM
@@ -357,7 +368,7 @@ module Plume
 			end
 
 			def find_cte(name, scope)
-				needle = name.downcase
+				needle = name.downcase(:ascii)
 				scope.each_up do |s|
 					return s.ctes[needle] if s.ctes&.key?(needle)
 				end
@@ -401,7 +412,7 @@ module Plume
 					left = left_sources.find { |s| s.column(column) } || left_sources.find { |s| s.columns.nil? }
 					read_through(left, column, :referenced, join) if left
 					read_through(right, column, :referenced, join)
-					(right.merged ||= Set.new) << column.downcase
+					(right.merged ||= Set.new) << column.downcase(:ascii)
 				end
 			end
 
@@ -435,12 +446,12 @@ module Plume
 						record(source.schema, source.node.table, "*", usage, node)
 						nil
 					else
-						columns = source.columns.reject { |c| skip_merged && source.merged&.include?(c.downcase) }
+						columns = source.columns.reject { |c| skip_merged && source.merged&.include?(c.downcase(:ascii)) }
 						columns.each { |c| record(source.table.schema, source.table.name, c, usage, node) }
 						columns
 					end
 				else
-					source.columns&.reject { |c| skip_merged && c && source.merged&.include?(c.downcase) }
+					source.columns&.reject { |c| skip_merged && c && source.merged&.include?(c.downcase(:ascii)) }
 				end
 			end
 
@@ -475,11 +486,11 @@ module Plume
 					return unresolved(qualified_name(node), "no such table: #{node.table}", node)
 				end
 
-				return if aliases == :first && scope.aliases&.key?(name.downcase)
+				return if aliases == :first && scope.aliases&.key?(name.downcase(:ascii))
 
 				scope.each_up do |s|
 					return if resolve_in(s, name, usage, node)
-					return if s.equal?(scope) && aliases == :fallback && s.aliases&.key?(name.downcase)
+					return if s.equal?(scope) && aliases == :fallback && s.aliases&.key?(name.downcase(:ascii))
 					return if rowid(s, name, usage, node)
 				end
 
@@ -498,7 +509,7 @@ module Plume
 					read_through(known.first, name, usage, node)
 				elsif known.size > 1 && unknown.empty?
 					# A USING/NATURAL column belongs to both sides and is not ambiguous
-					merged = known.select { |s| s.merged&.include?(name.downcase) }
+					merged = known.select { |s| s.merged&.include?(name.downcase(:ascii)) }
 					if merged.any?
 						read_through((known - merged).first || known.first, name, usage, node)
 					else
@@ -527,7 +538,7 @@ module Plume
 			end
 
 			def rowid(scope, name, usage, node)
-				return false unless Catalog::ROWID_NAMES.include?(name.downcase)
+				return false unless Catalog::ROWID_NAMES.include?(name.downcase(:ascii))
 
 				candidates = scope.sources.select { |s| s.kind == :table && (s.table.nil? || s.table.rowid?) }
 				return false unless candidates.size == 1
@@ -541,7 +552,7 @@ module Plume
 				when :table
 					if source.table
 						column = source.table.column(name)
-						column ||= source.table.rowid_alias || "rowid" if Catalog::ROWID_NAMES.include?(name.downcase) && source.table.rowid?
+						column ||= source.table.rowid_alias || "rowid" if Catalog::ROWID_NAMES.include?(name.downcase(:ascii)) && source.table.rowid?
 						return unresolved(name, "no such column in #{source.table.name}", node) unless column
 
 						record(source.table.schema, source.table.name, column, usage, node)

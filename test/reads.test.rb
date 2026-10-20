@@ -34,6 +34,16 @@ test "catalog from SQL takes columns of CREATE TABLE AS from the select" do
 	assert_equal catalog.table("b").columns, ["x", "z", "x + 1"]
 end
 
+# SQLite folds the case of ASCII letters only, so these are two tables and two columns
+test "catalog tells apart names that differ in the case of non-ASCII letters" do
+	catalog = Plume::Catalog.from_sql(%(CREATE TABLE "Σ" ("É"); CREATE TABLE "σ" ("é")))
+
+	assert_equal catalog.tables.map(&:name), ["Σ", "σ"]
+	assert_equal sorted(Plume.reads(%(SELECT "É" FROM "Σ"), catalog:).columns), { "Σ" => ["É"] }
+	assert_equal sorted(Plume.reads(%(SELECT "é" FROM "σ"), catalog:).columns), { "σ" => ["é"] }
+	assert_raises(Plume::Analysis::Error) { Plume.reads("SELECT é FROM Σ", catalog:) }
+end
+
 test "split_statements keeps trigger bodies whole" do
 	statements = Plume::Catalog.split_statements(SCHEMA)
 

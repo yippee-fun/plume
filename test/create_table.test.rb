@@ -1326,3 +1326,9 @@ end
 test "create table t(a references u on insert cascade)" do
 	assert_equal parse_stmt("CREATE TABLE t(a REFERENCES u ON INSERT CASCADE)").columns.first.constraints.first.foreign_key_clause.actions.first.trigger, :INSERT
 end
+
+test "a type name that is not valid UTF-8 has an affinity" do
+	node = parse_stmt((+"CREATE TABLE t (c \xFFREAL)").force_encoding(Encoding::UTF_8))
+
+	assert_equal node.columns[0].type.affinity, :REAL
+end

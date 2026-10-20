@@ -13,8 +13,8 @@ module Plume
 			def column(name)
 				return name.to_s unless columns
 
-				needle = name.to_s.downcase
-				columns.find { |c| c.downcase == needle } || hidden_columns.find { |c| c.downcase == needle }
+				needle = name.to_s.downcase(:ascii)
+				columns.find { |c| c.downcase(:ascii) == needle } || hidden_columns.find { |c| c.downcase(:ascii) == needle }
 			end
 
 			def rowid? = !without_rowid
@@ -113,13 +113,13 @@ module Plume
 
 		private
 
-		def key(schema, name) = [schema.to_s.downcase, name.to_s.downcase].freeze
+		def key(schema, name) = [schema.to_s.downcase(:ascii), name.to_s.downcase(:ascii)].freeze
 
 		def lookup(collection, name, schema)
 			return collection[key(schema, name)] if schema
 
 			collection[key("temp", name)] || collection[key("main", name)] ||
-				collection.find { |(_s, n), _| n == name.to_s.downcase }&.last
+				collection.find { |(_s, n), _| n == name.to_s.downcase(:ascii) }&.last
 		end
 
 		def schema_of(name, statement) = name.schema || (statement.temporary ? "temp" : "main")
@@ -155,8 +155,8 @@ module Plume
 			unless candidate
 				table_pk = statement.constraints&.find { |c| PrimaryKeyTableConstraint === c }
 				if table_pk && table_pk.columns.size == 1
-					pk_name = table_pk.columns[0].name.downcase
-					candidate = statement.columns.find { |c| c.name.downcase == pk_name }
+					pk_name = table_pk.columns[0].name.downcase(:ascii)
+					candidate = statement.columns.find { |c| c.name.downcase(:ascii) == pk_name }
 				end
 			end
 
