@@ -1,3 +1,9 @@
+## [Unreleased]
+
+- `Plume.writes`: which tables and columns an INSERT, UPDATE or DELETE would write - the same `Writes` that `Plume.access` returns, without the reads
+- `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
+- Fixed: an INSERT without a column list was reported as writing the table's generated columns
+
 ## [0.2.0] - 2026-10-20
 
 - Requires Ruby 3.2 or later
