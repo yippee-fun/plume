@@ -189,6 +189,10 @@ WEIRD_STRINGS = [
 	["!-", [:ILLEGAL, :MINUS]],
 	["$abc/", [:VARIABLE, :SLASH]],
 	[".a", [:DOT, :ID]],
+	# a number that starts with its "." has had its one "." already
+	[".0.", [:FLOAT, :DOT]],
+	[".5.5", [:FLOAT, :FLOAT]],
+	[".1_0.", [:QNUMBER, :DOT]],
 	["/1", [:SLASH, :INTEGER]],
 	["0X123_456/", [:QNUMBER, :SLASH]],
 	["1.0E+", [:ILLEGAL, :PLUS]],
