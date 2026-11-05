@@ -228,7 +228,59 @@ reads.projected  # columns whose values can end up in the result rows
 reads.referenced # columns only used to filter, join, sort or group
 ```
 
-`Plume.access` does the same for `INSERT`, `UPDATE` and `DELETE`, and also tells you what they write:
+`Plume.reads` also takes what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed. So do `Plume.writes` and `Plume.access` below.
+
+The catalog can also come from a live database with `Plume::Catalog.from_sqlite(db)`, or be left out - then `SELECT *` is reported as a read of the column `"*"` and unqualified columns only resolve when there is a single table in scope.
+
+Anything that cannot be attributed (an unknown table or column, an ambiguous name) raises `Plume::Analysis::Error` with a pointer into the SQL. Pass `strict: false` to get the partial result and a list in `reads.unresolved` instead. Each entry of `reads.references` carries the AST node it came from, so you can point at it too - see [examples/read_guard.rb](examples/read_guard.rb) for a small column-level access check built on top.
+
+The results are tested against SQLite's own [authorizer callback](https://www.sqlite.org/c3ref/set_authorizer.html), which is also the place to enforce access rules at runtime when you have a connection. `Plume.reads` is for when you want to vet SQL ahead of time, without a database, or with good error messages. It reports one thing the authorizer does not: the right-hand join columns of `USING` and `NATURAL` joins.
+
+### What does this query write?
+
+`Plume.writes` works out which tables and columns an `INSERT`, `UPDATE` or `DELETE` would change. It takes the same `catalog:` and `strict:` as `Plume.reads`:
+
+```ruby
+writes = Plume.writes(<<~SQL, catalog: catalog)
+  INSERT INTO posts (user_id, title) VALUES (?, ?)
+  ON CONFLICT (id) DO UPDATE SET title = excluded.title
+SQL
+
+writes.tables   # => #<Set: {"posts"}>
+writes.columns  # => {"posts" => #<Set: {"user_id", "title"}>}
+writes.inserted # => {"posts" => #<Set: {"user_id", "title"}>}
+writes.updated  # => {"posts" => #<Set: {"title"}>}, from the DO UPDATE
+```
+
+A `DELETE` removes whole rows, so it names a table and no columns:
+
+```ruby
+writes = Plume.writes("DELETE FROM posts WHERE user_id = ?", catalog: catalog)
+
+writes.deleted # => #<Set: {"posts"}>
+writes.tables  # => #<Set: {"posts"}>
+writes.columns # => {}
+```
+
+Around the edges:
+
+- An `INSERT` without a column list writes every column of the table except generated ones, or `"*"` without a catalog. `DEFAULT VALUES` writes the table but names no columns.
+- Setting `rowid`, `oid` or `_rowid_` writes `"ROWID"`, even when an `INTEGER PRIMARY KEY` stands in for it - unless the table has a real column by that name.
+- `RETURNING` and CTEs only read. A CTE never stands in for the table being written, even when it has the same name.
+- Writing to a view reports the view. Plume does not look into triggers, so what an `INSTEAD OF` trigger or any other trigger writes is not reported, and neither are the rows a `REPLACE` deletes to make room.
+- A `SELECT` writes nothing.
+- Tables outside `main` are keyed with their schema, as in `"aux.users"`.
+
+With `strict: false`, a column the catalog does not have is left out and listed in `writes.unresolved`:
+
+```ruby
+writes = Plume.writes("UPDATE posts SET title = ?, body = ? WHERE id = ?", catalog: catalog, strict: false)
+
+writes.updated                # => {"posts" => #<Set: {"title"}>}
+writes.unresolved.map(&:name) # => ["body"]
+```
+
+`Plume.access` gives you both the reads and the writes, from one pass over the statement:
 
 ```ruby
 access = Plume.access(<<~SQL, catalog: catalog)
@@ -242,30 +294,7 @@ access.reads.referenced # => {"users" => #<Set: {"id"}>, "posts" => #<Set: {"use
 
 A value copied into a column being written counts as projected, just like one returned in the result rows.
 
-When you only care about the writes, `Plume.writes` takes the same arguments and gives you `access.writes` directly:
-
-```ruby
-writes = Plume.writes(<<~SQL, catalog: catalog)
-  INSERT INTO posts (user_id, title) VALUES (?, ?)
-  ON CONFLICT (id) DO UPDATE SET title = excluded.title
-SQL
-
-writes.tables   # => #<Set: {"posts"}>
-writes.columns  # => {"posts" => #<Set: {"user_id", "title"}>}
-writes.inserted # => {"posts" => #<Set: {"user_id", "title"}>}
-writes.updated  # => {"posts" => #<Set: {"title"}>}
-writes.deleted  # tables a DELETE removes rows from, as a whole
-```
-
-An INSERT without a column list writes every column of the table except generated ones (`"*"` without a catalog), and `DEFAULT VALUES` writes the table but names no columns. A SELECT writes nothing. Triggers are not looked into, so what they write elsewhere is not reported, and neither are the rows a REPLACE deletes to make room.
-
-All three also take what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed.
-
-The catalog can also come from a live database with `Plume::Catalog.from_sqlite(db)`, or be left out - then `SELECT *` is reported as a read of the column `"*"` and unqualified columns only resolve when there is a single table in scope.
-
-Anything that cannot be attributed (an unknown table or column, an ambiguous name) raises `Plume::Analysis::Error` with a pointer into the SQL. Pass `strict: false` to get the partial result and a list in `reads.unresolved` instead. Each entry of `reads.references` carries the AST node it came from, so you can point at it too - see [examples/read_guard.rb](examples/read_guard.rb) for a small column-level access check built on top.
-
-The results are tested against SQLite's own [authorizer callback](https://www.sqlite.org/c3ref/set_authorizer.html), which is also the place to enforce access rules at runtime when you have a connection. `Plume.reads` is for when you want to vet SQL ahead of time, without a database, or with good error messages. It reports one thing the authorizer does not: the right-hand join columns of `USING` and `NATURAL` joins.
+Writes are checked against the authorizer as well, and must match it exactly - except for the columns of an `INSERT`, which the authorizer does not name.
 
 ### Ractors
 
