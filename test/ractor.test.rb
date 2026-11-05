@@ -90,6 +90,13 @@ test "a catalog made shareable in the main Ractor serves reads and access in sev
 	assert_equal sorted(expected[2][0]), { "teams" => ["name"], "users" => ["email"] }
 end
 
+test "Plume.writes in a Ractor leaves out generated columns of a shareable catalog" do
+	catalog = Ractor.make_shareable(Plume::Catalog.from_sql("CREATE TABLE t (a INT, b INT GENERATED ALWAYS AS (a * 2))"))
+	columns = in_ractors(2, catalog) { |cat| Plume.writes("INSERT INTO t VALUES (1)", catalog: cat).inserted }
+
+	columns.each { |result| assert_equal result, { "t" => Set["a"] } }
+end
+
 test "Plume.reads in a Ractor returns references to the nodes they were found at" do
 	catalog = ractor_catalog
 	reads = in_ractors(1, catalog) do |cat|

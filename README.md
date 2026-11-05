@@ -283,7 +283,7 @@ end
 ractors.flat_map(&:value) # `take` before Ruby 4.0
 ```
 
-`tokenize`, `parse`, `to_sql`, `walk`, `reads` and `access` all work inside a Ractor. Trees and results come back out like any other object, and a tree passed through `Ractor.make_shareable` can still be read, printed, walked and analyzed - it just can no longer be edited. After `eager_load!` the node classes cannot be given new props.
+`tokenize`, `parse`, `to_sql`, `walk`, `reads`, `writes` and `access` all work inside a Ractor. Trees and results come back out like any other object, and a tree passed through `Ractor.make_shareable` can still be read, printed, walked and analyzed - it just can no longer be edited. After `eager_load!` the node classes cannot be given new props.
 
 ## Roadmap
 
