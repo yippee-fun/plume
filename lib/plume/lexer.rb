@@ -460,7 +460,8 @@ module Plume
 					end
 				end
 
-				if peek == 46 # "."
+				# A number that began with its "." has had its fraction already, ".5.5" is two tokens
+				if character_type != :DOT && peek == 46 # "."
 					step
 					token_type = :FLOAT if token_type == :INTEGER
 

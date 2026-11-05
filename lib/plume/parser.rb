@@ -2610,6 +2610,11 @@ module Plume
 			# SQLite lexes "#9" as a variable too, but "#" and a digit only ever names a register
 			# inside its own nested parses, so as a parameter it is a syntax error
 			elsif :VARIABLE == current_token && !current_value.b.match?(/\A#\d/)
+				# SQLite numbers them from ?1 up to its default SQLITE_MAX_VARIABLE_NUMBER
+				if (number = current_value.b[/\A\?(\d+)\z/, 1]) && !number.to_i.between?(1, 32_766)
+					expected!("?1 to ?32766")
+				end
+
 				Variable.concrete(
 					full_source: @lexer.sql,
 					name_tk: Token::Variable(require(:VARIABLE)),

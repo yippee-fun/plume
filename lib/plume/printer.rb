@@ -104,8 +104,12 @@ module Plume
 		def order_and_limit(node)
 			[
 				node.orderings && "ORDER BY #{list(node.orderings)}",
-				node.limit && "LIMIT #{print(node.limit)}",
-				node.offset && "OFFSET #{print(node.offset)}",
+				# `LIMIT offset, limit` keeps its order: swapping the two would renumber their `?` parameters
+				if node.offset && node.offset_tk_tok == :COMMA
+					"LIMIT #{print(node.offset)}, #{print(node.limit)}"
+				else
+					[node.limit && "LIMIT #{print(node.limit)}", node.offset && "OFFSET #{print(node.offset)}"]
+				end,
 			]
 		end
 

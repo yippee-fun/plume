@@ -1780,7 +1780,6 @@ fixtures/sqlite-traced/bigrow-4cf8178fa4.sql
 fixtures/sqlite-traced/bigrow-caa6621783.sql
 fixtures/sqlite-traced/bind-3aa8da229b.sql
 fixtures/sqlite-traced/bind-9ed16ace7b.sql
-fixtures/sqlite-traced/bind-bd0e3350ac.sql
 fixtures/sqlite-traced/bind-e220dfb9e2.sql
 fixtures/sqlite-traced/blob-881d462baf.sql
 fixtures/sqlite-traced/blob-8d24d95d11.sql
