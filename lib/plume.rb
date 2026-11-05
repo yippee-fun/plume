@@ -3,10 +3,12 @@
 require "plume/version"
 require "literal"
 require "plume/union"
+require "plume/literal_patches"
 
 module Plume
 	extend Literal::Types
 	extend Union::Types
+	extend LiteralPatches::Types if LiteralPatches::DEFERRED_WRITES_ON_CHECK
 
 	# JRuby and TruffleRuby have no Ractors, so there is nothing to make shareable for
 	def self.make_shareable(obj) = defined?(Ractor) ? Ractor.make_shareable(obj) : obj

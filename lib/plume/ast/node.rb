@@ -6,31 +6,8 @@ module Plume
 
 		Stringy = _Union(String, Symbol)
 
-		# Literal keeps the props of a class in a Schema guarded by a Mutex, and a Mutex can never be
-		# shared - so outside the main Ractor every node constructor raises. Once all props are
-		# declared, `Plume.eager_load!` swaps in this frozen stand-in, which has the same readers
-		class ShareableSchema
-			include Enumerable
-
-			attr_reader :properties_index
-
-			def initialize(schema)
-				@properties_index = schema.properties_index.dup
-				@sorted_properties = schema.to_a
-			end
-
-			def [](key) = @properties_index[key]
-			def each(&) = @sorted_properties.each(&)
-			def size = @sorted_properties.size
-			def empty? = @sorted_properties.empty?
-			def <<(property) = raise(FrozenError, "cannot add #{property.name} after Plume.eager_load! has frozen the props")
-
-			# Literal starts the schema of a subclass from a dup of its parent's
-			def dup = Literal::Properties::Schema.new(properties_index: @properties_index.dup, sorted_properties: @sorted_properties.dup)
-		end
-
 		def self.literal_properties
-			@shareable_literal_properties || super
+			super
 		rescue => error
 			raise unless defined?(Ractor::IsolationError) && Ractor::IsolationError === error
 
@@ -39,11 +16,19 @@ module Plume
 		end
 
 		def self.make_shareable!
-			@shareable_literal_properties = Plume.make_shareable(ShareableSchema.new(literal_properties))
+			Plume.make_shareable(literal_properties)
 			Plume.make_shareable(@inspectable_props)
 			Plume.make_shareable(@token_names)
 			self
 		end
+
+		def self.prop(name, ...)
+			raise FrozenError, "cannot add #{name} to #{self.name} after Plume.eager_load! has frozen its props" if literal_properties.frozen?
+
+			super
+		end
+
+		singleton_class.prepend(LiteralPatches::NodeSchema) if LiteralPatches::SCHEMA_HOLDS_MUTEX
 
 		prop :full_source, _Nilable(String)
 		prop :leading, _Nilable(Token)
