@@ -216,6 +216,8 @@ module Plume
 				if target.table
 					if column && column != "*"
 						canonical = target.column(column)
+						# SQLite's authorizer names a write to the rowid "ROWID" however it was spelled, alias or not
+						canonical ||= "ROWID" if Catalog::ROWID_NAMES.include?(column.downcase(:ascii)) && target.table.rowid?
 						return unresolved(column, "no such column in #{target.table.name}", node) unless canonical
 
 						column = canonical

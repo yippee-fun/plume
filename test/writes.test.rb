@@ -106,6 +106,23 @@ test "update reports column names as the catalog spells them" do
 	assert_equal sorted(writes("update USERS set EMAIL = ?").updated), { "users" => ["email"] }
 end
 
+test "setting the rowid writes ROWID, however it is spelled and aliased" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a, b); CREATE TABLE ipk (id INTEGER PRIMARY KEY, b)")
+
+	["rowid", "OID", "_rowid_"].each do |name|
+		assert_equal Plume.writes("update t set #{name} = 1", catalog:).updated, { "t" => Set["ROWID"] }
+		assert_equal Plume.writes("update ipk set #{name} = 1", catalog:).updated, { "ipk" => Set["ROWID"] }
+	end
+	assert_equal sorted(Plume.writes("update t set (b, rowid) = (1, 2)", catalog:).updated), { "t" => ["ROWID", "b"] }
+end
+
+test "a column named like the rowid is that column, and a table without one has no rowid to set" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (oid TEXT, b); CREATE TABLE w (id INT PRIMARY KEY, b) WITHOUT ROWID")
+
+	assert_equal Plume.writes("update t set OID = 1", catalog:).updated, { "t" => Set["oid"] }
+	assert_raises(Plume::Analysis::Error) { Plume.writes("update w set rowid = 1", catalog:) }
+end
+
 test "schema-qualified targets are keyed by schema outside main" do
 	assert_equal sorted(writes("update main.users set email = ?").updated), { "users" => ["email"] }
 	assert_equal sorted(Plume.writes("update aux.users set email = ?").updated), { "aux.users" => ["email"] }

@@ -4,6 +4,7 @@
 - `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
 - `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
 - Fixed: an INSERT without a column list was reported as writing the table's generated columns
+- Fixed: `UPDATE t SET rowid = ...` raised "no such column"; it is now a write of `ROWID`, as SQLite's authorizer reports it
 
 ## [0.2.0] - 2026-10-20
 
