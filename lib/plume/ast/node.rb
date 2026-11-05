@@ -6,6 +6,30 @@ module Plume
 
 		Stringy = _Union(String, Symbol)
 
+		def self.literal_properties
+			super
+		rescue => error
+			raise unless defined?(Ractor::IsolationError) && Ractor::IsolationError === error
+
+			raise Ractor::IsolationError, "#{name} is not shareable yet, call Plume.eager_load! from the main Ractor first " \
+				"(or #{name}.make_shareable! for a class defined after it)"
+		end
+
+		def self.make_shareable!
+			Plume.make_shareable(literal_properties)
+			Plume.make_shareable(@inspectable_props)
+			Plume.make_shareable(@token_names)
+			self
+		end
+
+		def self.prop(name, ...)
+			raise FrozenError, "cannot add #{name} to #{self.name} after Plume.eager_load! has frozen its props" if literal_properties.frozen?
+
+			super
+		end
+
+		singleton_class.prepend(LiteralPatches::NodeSchema) if LiteralPatches::SCHEMA_HOLDS_MUTEX
+
 		prop :full_source, _Nilable(String)
 		prop :leading, _Nilable(Token)
 		prop :trailing, _Nilable(Token)
@@ -203,13 +227,14 @@ module Plume
 			define_node_reader(name)
 		end
 
-		# Absent children read as nil rather than the LiteralNil default
+		# Absent children read as nil rather than the LiteralNil default. Evaluated from a string
+		# because a method defined with a block cannot be called from another Ractor
 		def self.define_node_reader(name)
-			ivar = :"@#{name}"
-			define_method(name) do
-				value = instance_variable_get(ivar)
-				LiteralNil.equal?(value) ? nil : value
-			end
+			class_eval <<-RUBY, __FILE__, __LINE__ + 1
+				def #{name}
+					LiteralNil.equal?(@#{name}) ? nil : @#{name}
+				end
+			RUBY
 		end
 	end
 end

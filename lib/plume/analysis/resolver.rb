@@ -53,7 +53,7 @@ module Plume
 				"json_tree" => JSON_TABLE_COLUMNS,
 				"jsonb_each" => JSON_TABLE_COLUMNS,
 				"jsonb_tree" => JSON_TABLE_COLUMNS,
-				"generate_series" => %w[value start stop step],
+				"generate_series" => %w[value start stop step].freeze,
 			}.freeze
 
 			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement].freeze

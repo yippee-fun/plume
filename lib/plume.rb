@@ -3,10 +3,15 @@
 require "plume/version"
 require "literal"
 require "plume/union"
+require "plume/literal_patches"
 
 module Plume
 	extend Literal::Types
 	extend Union::Types
+	extend LiteralPatches::Types if LiteralPatches::DEFERRED_WRITES_ON_CHECK
+
+	# JRuby and TruffleRuby have no Ractors, so there is nothing to make shareable for
+	def self.make_shareable(obj) = defined?(Ractor) ? Ractor.make_shareable(obj) : obj
 
 	autoload :Lexer, "plume/lexer"
 	autoload :Parser, "plume/parser"
@@ -138,6 +143,27 @@ module Plume
 				tokens << (with_values ? [token, lex.value] : token)
 			end
 		end
+	end
+
+	# Loads everything that is otherwise autoloaded and freezes what the node classes know
+	# about their props, which is what lets Plume run inside Ractors. Call it from the main
+	# Ractor before starting any. Node classes cannot get new props afterwards
+	def self.eager_load!
+		# SQLiteGrammar is a development tool which pulls in net/http
+		(constants - [:SQLiteGrammar]).each { |name| const_get(name) if autoload?(name) }
+		Analysis::Resolver
+		# Node constructors and type errors reach for these, and Ruby 3.3 cannot autoload outside the main Ractor.
+		# Not every Literal version has all of them
+		%i[Null TypeError ArgumentError].each { |name| Literal.const_get(name) if Literal.const_defined?(name) }
+		# Literal versions that cache a `_Deferred` do so on first use, which a frozen one cannot do.
+		# Each node's schema then shares Expression with the rest of its prop types
+		Expression === nil
+		make_shareable(Token::Tuple)
+		constants.each do |name|
+			klass = const_get(name)
+			klass.make_shareable! if Class === klass && klass <= Node
+		end
+		true
 	end
 
 	def self.parse(sql)
