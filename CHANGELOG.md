@@ -2,6 +2,7 @@
 
 - `Plume.writes`: which tables and columns an INSERT, UPDATE or DELETE would write - the same `Writes` that `Plume.access` returns, without the reads
 - `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
+- `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
 - Fixed: an INSERT without a column list was reported as writing the table's generated columns
 
 ## [0.2.0] - 2026-10-20
@@ -23,7 +24,6 @@
 - A statement nested too deeply to parse raises `Plume::SyntaxError` instead of `SystemStackError`
 - Building a tree is no longer quadratic in its size, on Ruby 4 included
 - `literal` is now declared as a runtime dependency
-- `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
 
 ## [0.1.0] - 2024-03-22
 
