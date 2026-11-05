@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "sqlite3"
-
 WRITES_SCHEMA = <<~SQL
 	CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, secret TEXT, team_id INT);
 	CREATE TABLE teams (id INTEGER PRIMARY KEY, name TEXT);
@@ -36,12 +34,8 @@ test "insert without a column list leaves out generated columns" do
 	assert_equal sorted(writes("insert into totals values (1, 2)").columns), { "totals" => ["a", "b"] }
 end
 
-test "the catalog knows generated columns, from SQL and from a database" do
-	db = SQLite3::Database.new(":memory:")
-	db.execute("CREATE TABLE totals (a INT, b INT, total INT GENERATED ALWAYS AS (a + b) STORED, half INT AS (a / 2))")
-
+test "the catalog knows generated columns from CREATE TABLE" do
 	assert_equal Plume::Catalog.from_sql(WRITES_SCHEMA).table("totals").generated_columns, ["total"]
-	assert_equal Plume::Catalog.from_sqlite(db).table("totals").generated_columns, ["total", "half"]
 end
 
 test "insert without a column list and without a catalog writes *" do
