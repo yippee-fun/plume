@@ -116,7 +116,8 @@ module Plume
 				elsif statement.columns
 					statement.columns.each { |column| write(target, column.column, :insert, column) }
 				elsif target&.columns
-					target.columns.each { |column| write(target, column, :insert, statement.table) }
+					# A VALUES row without a column list has no slot for generated columns
+					(target.columns - (target.table&.generated_columns || [])).each { |column| write(target, column, :insert, statement.table) }
 				else
 					write(target, "*", :insert, statement.table)
 				end
@@ -215,6 +216,8 @@ module Plume
 				if target.table
 					if column && column != "*"
 						canonical = target.column(column)
+						# SQLite's authorizer names a write to the rowid "ROWID" however it was spelled, alias or not
+						canonical ||= "ROWID" if Catalog::ROWID_NAMES.include?(column.downcase(:ascii)) && target.table.rowid?
 						return unresolved(column, "no such column in #{target.table.name}", node) unless canonical
 
 						column = canonical

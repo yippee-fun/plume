@@ -8,8 +8,9 @@ module Plume
 		ROWID_NAMES = %w[rowid oid _rowid_].freeze
 
 		# `columns` is nil when they cannot be known, like a CREATE TABLE … AS SELECT * from a table
-		# the catalog lacks; any column name is then taken as written
-		Table = Data.define(:schema, :name, :columns, :hidden_columns, :rowid_alias, :without_rowid) do
+		# the catalog lacks; any column name is then taken as written. `generated_columns` are among
+		# `columns` too, since they can be read like any other, but nothing can write to them
+		Table = Data.define(:schema, :name, :columns, :hidden_columns, :generated_columns, :rowid_alias, :without_rowid) do
 			def column(name)
 				return name.to_s unless columns
 
@@ -32,8 +33,8 @@ module Plume
 			@views = {}
 		end
 
-		def add_table(name, columns, schema: "main", hidden_columns: [], rowid_alias: nil, without_rowid: false)
-			table = Table.new(schema:, name:, columns: columns.freeze, hidden_columns: hidden_columns.freeze, rowid_alias:, without_rowid:)
+		def add_table(name, columns, schema: "main", hidden_columns: [], generated_columns: [], rowid_alias: nil, without_rowid: false)
+			table = Table.new(schema:, name:, columns: columns.freeze, hidden_columns: hidden_columns.freeze, generated_columns: generated_columns.freeze, rowid_alias:, without_rowid:)
 			@tables[key(schema, name)] = table
 		end
 
@@ -135,7 +136,8 @@ module Plume
 			end
 
 			columns = statement.columns.map(&:name)
-			add_table(name, columns, schema:, rowid_alias: rowid_alias(statement), without_rowid: statement.without_row_id)
+			generated = statement.columns.select { |c| c.constraints&.any?(GeneratedAsColumnConstraint) }.map(&:name)
+			add_table(name, columns, schema:, generated_columns: generated, rowid_alias: rowid_alias(statement), without_rowid: statement.without_row_id)
 		end
 
 		def add_create_view(statement)
@@ -168,11 +170,12 @@ module Plume
 			# hidden is 0 for ordinary columns, 1 for hidden virtual table columns, 2 and 3 for generated ones
 			columns = info.reject { |row| row[6] == 1 }.map { |row| row[1] }
 			hidden = info.select { |row| row[6] == 1 }.map { |row| row[1] }
+			generated = info.select { |row| row[6] == 2 || row[6] == 3 }.map { |row| row[1] }
 			without_rowid = sql.to_s.match?(/\bWITHOUT\s+ROWID\s*;?\s*\z/i)
 			pk_rows = info.select { |row| row[5].to_i > 0 }
 			rowid_alias = pk_rows[0][1] if !without_rowid && pk_rows.size == 1 && pk_rows[0][2].to_s.casecmp?("INTEGER")
 
-			add_table(name, columns, schema:, hidden_columns: hidden, rowid_alias:, without_rowid:)
+			add_table(name, columns, schema:, hidden_columns: hidden, generated_columns: generated, rowid_alias:, without_rowid:)
 		end
 
 		def quote(identifier) = %("#{identifier.to_s.gsub('"', '""')}")
