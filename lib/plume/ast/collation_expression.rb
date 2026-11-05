@@ -21,6 +21,6 @@ module Plume
 		end
 
 		def expression = (@expression == LiteralNil) ? expression_tk_val : @expression
-		def sequence = (@sequence == LiteralNil) ? sequence_tk_val.to_sym.upcase : @sequence
+		def sequence = (@sequence == LiteralNil) ? Node.collation_name(sequence_tk_val) : @sequence
 	end
 end

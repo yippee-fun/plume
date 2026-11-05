@@ -11,8 +11,9 @@ module Plume
 			end
 
 			def msg
-				line = @sql.byteslice(0, @beg).count("\n") + 1
-				where = @sql.strip.include?("\n") ? " line #{line}" : ""
+				src = @sql.b # the SQL can be invalid UTF-8, which String#strip will not take
+				line = src.byteslice(0, @beg).count("\n") + 1
+				where = src.strip.include?("\n") ? " line #{line}" : ""
 				what = @token ? "token #{@token}[#{@sql.byteslice(@beg, @fin - @beg).inspect}]" : "end of input"
 				"Unexpected #{what} at#{where}:\n#{Plume.excerpt(@sql, @beg, @fin)}\n  Expected one of: #{@expected.join(", ")}\n"
 			end
@@ -157,7 +158,7 @@ module Plume
 			else
 				result
 			end
-		rescue SystemStackError
+		rescue *STACK_EXHAUSTED
 			# How deep is too deep depends on the stack the caller has left, so no fixture relies on it
 			raise SyntaxError.new("statement nested too deeply")
 		end
@@ -1502,7 +1503,8 @@ module Plume
 			left = basic_expression
 
 			while (operator = current_token)
-				operator_precedence = OPERATOR_PRECEDENCE[operator] || -1
+				# ~ has a precedence for its operand's sake, but is no binary operator
+				operator_precedence = ((operator != :BITNOT) && OPERATOR_PRECEDENCE[operator]) || -1
 				break if operator_precedence < min_precedence
 				next_precedence = operator_precedence + 1
 
@@ -2607,7 +2609,7 @@ module Plume
 				raise_function
 			# SQLite lexes "#9" as a variable too, but "#" and a digit only ever names a register
 			# inside its own nested parses, so as a parameter it is a syntax error
-			elsif :VARIABLE == current_token && !current_value.match?(/\A#\d/)
+			elsif :VARIABLE == current_token && !current_value.b.match?(/\A#\d/)
 				Variable.concrete(
 					full_source: @lexer.sql,
 					name_tk: Token::Variable(require(:VARIABLE)),
@@ -3589,7 +3591,7 @@ module Plume
 				direction = require current_token
 			end
 			if (nulls_kw = maybe(:NULLS))
-				nulls = require current_token
+				nulls = require_one_of(:FIRST, :LAST)
 			end
 
 			OrderingTerm.concrete(

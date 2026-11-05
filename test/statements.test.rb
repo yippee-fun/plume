@@ -184,3 +184,9 @@ test "running out of SQL is an error too" do
 
 	assert_equal error.message.split("\n").first, "Unexpected end of input at:"
 end
+
+test "a syntax error in SQL that is not valid UTF-8 is still a syntax error" do
+	error = assert_raises(Plume::SyntaxError) { Plume.parse((+"select \xFF,\n(").force_encoding(Encoding::UTF_8)) }
+
+	assert_equal error.message.b.split("\n").first, "Unexpected end of input at line 2:"
+end

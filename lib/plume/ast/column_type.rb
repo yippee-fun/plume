@@ -13,7 +13,8 @@ module Plume
 
 		inspectable def affinity
 			# rules found at: https://www.sqlite.org/datatype3.html#determination_of_column_affinity
-			case text
+			# Matched as bytes, as SQLite does, so a type name that is not valid UTF-8 has one too
+			case text&.b
 			when /INT/i							then	:INTEGER
 			when /CHAR|CLOB|TEXT/i	then	:TEXT
 			when /BLOB/i						then	:BLOB

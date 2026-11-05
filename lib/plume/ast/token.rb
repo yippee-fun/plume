@@ -148,8 +148,11 @@ module Plume
 			src = source(str, tup)
 			bytesize = src.bytesize
 			# strip the leading and trailing quotes, a quote inside is written twice
-			src.byteslice(1, bytesize - 2).gsub("''", "'")
+			undoubled(src.byteslice(1, bytesize - 2), "'")
 		end
+
+		# Done on the bytes, since TruffleRuby's gsub refuses a string that is not valid UTF-8
+		def undoubled(text, quote) = text.b.gsub(quote * 2, quote).force_encoding(text.encoding)
 
 		def blob_literal(str, tup)
 			src = source(str, tup)
@@ -169,9 +172,9 @@ module Plume
 
 			# Inside quotes, the quote character itself is written twice. Brackets have no escape
 			case src.getbyte(0)
-			when 96 then src.byteslice(1, src.bytesize - 2).gsub("``", "`")
-			when 39 then src.byteslice(1, src.bytesize - 2).gsub("''", "'")
-			when 34 then src.byteslice(1, src.bytesize - 2).gsub('""', '"')
+			when 96 then undoubled(src.byteslice(1, src.bytesize - 2), "`")
+			when 39 then undoubled(src.byteslice(1, src.bytesize - 2), "'")
+			when 34 then undoubled(src.byteslice(1, src.bytesize - 2), '"')
 			when 91 then src.byteslice(1, src.bytesize - 2)
 			else src
 			end

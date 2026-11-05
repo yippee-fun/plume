@@ -121,6 +121,16 @@ module Plume
 
 	SyntaxError = Class.new(StandardError)
 
+	# What running out of stack raises. JRuby lets a Java StackOverflowError through
+	# when the stack runs out inside its own Java code rather than in Ruby
+	STACK_EXHAUSTED =
+		if defined?(JRUBY_VERSION)
+			require "java"
+			[SystemStackError, Java::JavaLang::StackOverflowError].freeze
+		else
+			[SystemStackError].freeze
+		end
+
 	def self.tokenize(str, with_values: false, skip_spaces: true)
 		lex = Lexer.new(str, skip_spaces: skip_spaces)
 		[].tap do |tokens|

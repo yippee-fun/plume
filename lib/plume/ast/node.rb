@@ -10,6 +10,10 @@ module Plume
 		prop :leading, _Nilable(Token)
 		prop :trailing, _Nilable(Token)
 
+		# A collation's name, upcased as a symbol. A symbol cannot hold bytes that
+		# are not valid UTF-8, so a name with those stays the string it was
+		def self.collation_name(name) = name&.valid_encoding? ? name.to_sym.upcase : name
+
 		def self.inspectable(*props)
 			@inspectable_props ||= Set.new
 			@inspectable_props.merge(props)
@@ -66,12 +70,16 @@ module Plume
 		end
 
 		# Yields every node in the subtree depth-first, parents before their children,
-		# along with the parent (nil for the receiver)
-		def walk(parent = nil, &block)
-			return enum_for(:walk, parent) unless block
+		# along with the parent (nil for the receiver). Without recursing, so a tree as
+		# deep as SQLite allows does not run out of stack
+		def walk(parent = nil)
+			return enum_for(:walk, parent) unless block_given?
 
-			yield self, parent
-			children.each { |child| child.walk(self, &block) }
+			stack = [[self, parent]]
+			while (node, up = stack.pop)
+				yield node, up
+				node.children.reverse_each { |child| stack << [child, node] }
+			end
 			self
 		end
 

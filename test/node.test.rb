@@ -44,3 +44,9 @@ test "pattern matching uses the public readers" do
 		failure! { node.body.source.deconstruct_keys(nil).inspect }
 	end
 end
+
+test "walking a tree a thousand deep does not run out of stack" do
+	statement = Plume.parse("SELECT #{"(" * 1000}a#{")" * 1000}").first
+
+	assert_equal Thread.new { statement.each_node.count }.value, 1004
+end
