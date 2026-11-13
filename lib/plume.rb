@@ -21,6 +21,7 @@ module Plume
 	autoload :Printer, "plume/printer"
 	autoload :Analysis, "plume/analysis"
 	autoload :Parameters, "plume/parameters"
+	autoload :Dump, "plume/dump"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
@@ -206,6 +207,9 @@ module Plume
 
 		Parameters.new(statements.first)
 	end
+
+	# A tree from what `Node#dump` gave, or a list of them
+	def self.load(dump) = Dump.load(dump)
 
 	def self.reads(...) = Analysis.reads(...)
 	def self.writes(...) = Analysis.writes(...)

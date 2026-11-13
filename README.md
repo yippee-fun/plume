@@ -221,6 +221,16 @@ Plume.tokenize("SELECT a FROM t", with_values: true, with_positions: true)
 # => [[:SELECT, "SELECT", 0, 6], [:ID, "a", 7, 8], [:FROM, "FROM", 9, 13], [:ID, "t", 14, 15]]
 ```
 
+`dump` turns a tree into a plain hash that JSON can carry, and `Plume.load` turns that hash back into the same tree. Positions, keywords as written and the source all come through, so the loaded tree prints, locates and compares as the original did. That makes it possible to cache parsed trees, or to hand them to another process:
+
+```ruby
+json = JSON.generate(Plume.parse("SELECT DISTINCT a FROM t").first.dump)
+Plume.load(JSON.parse(json)).to_sql
+# => "SELECT DISTINCT a FROM t"
+```
+
+Neither `dump` nor `load` recurses, but JSON's own generator and parser do, so a very deep tree needs `max_nesting: false` and enough stack.
+
 The lexer knows _183_ token types: _153_ keywords, and _30_ more for punctuation, operators, literals and names. Words like `rowid`, `strict` and `stored`, which SQLite reads as plain names and checks by their text, are keywords here that fall back to names wherever SQLite would take a name.
 
 `Plume.parameters` numbers a statement's bind parameters the way SQLite does - `?` takes the next number, `?N` takes N, and a name keeps the number it first got - so you know what to bind where before preparing anything:
