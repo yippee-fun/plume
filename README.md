@@ -213,6 +213,18 @@ Plume.tokenize("SELECT a FROM t", with_values: true, with_positions: true)
 
 The lexer knows _183_ token types: _153_ keywords, and _30_ more for punctuation, operators, literals and names. Words like `rowid`, `strict` and `stored`, which SQLite reads as plain names and checks by their text, are keywords here that fall back to names wherever SQLite would take a name.
 
+`Plume.parameters` numbers a statement's bind parameters the way SQLite does - `?` takes the next number, `?N` takes N, and a name keeps the number it first got - so you know what to bind where before preparing anything:
+
+```ruby
+parameters = Plume.parameters("SELECT * FROM posts WHERE user_id = :user AND (title = ? OR body = ?) LIMIT :user")
+parameters.count             # => 3
+parameters.names             # => [":user", nil, nil]
+parameters.index(":user")    # => 1
+parameters.map(&:number)     # => [1, 2, 3, 1]
+```
+
+`count`, `names` and `index` answer what `sqlite3_bind_parameter_count`, `_name` and `_index` would. Each parameter also carries its `node`, and with it the `location` it was written at.
+
 ### What does this query read?
 
 `Plume.reads` works out which tables and columns a statement would read, looking through aliases, joins, subqueries, CTEs and views:

@@ -97,3 +97,31 @@ test "LIMIT with a comma keeps its parameters in order" do
 	].each { |sql| assert_equal parse_stmt(sql).to_sql, sql }
 	assert_equal parse_stmt("SELECT a FROM t LIMIT ? OFFSET ?").to_sql, "SELECT a FROM t LIMIT ? OFFSET ?"
 end
+
+# -- Plume.parameters
+
+test "parameters are numbered as SQLite numbers them" do
+	parameters = Plume.parameters("SELECT ?, :a, ?5, :a, @b, ?")
+
+	assert_equal parameters.map { |p| [p.number, p.name] }, [[1, nil], [2, ":a"], [5, "?5"], [2, ":a"], [6, "@b"], [7, nil]]
+	assert_equal [parameters.count, parameters.size], [7, 6]
+	assert_equal parameters.names, [nil, ":a", nil, nil, "?5", "@b", nil]
+end
+
+test "a name used after its number was taken shares that number" do
+	parameters = Plume.parameters("SELECT :a, ?1, ?3, $x")
+
+	assert_equal parameters.map(&:number), [1, 1, 3, 4]
+	assert_equal [parameters.index(":a"), parameters.index("$x"), parameters.index(":nope")], [1, 4, nil]
+end
+
+test "parameters are numbered in the order they are written, not the order of the tree" do
+	parameters = Plume.parameters("SELECT a FROM t LIMIT ?, ?")
+
+	assert_equal parameters.map { |p| p.node.location }, [[22, 23], [25, 26]]
+end
+
+test "parameters takes a parsed statement, and only one" do
+	assert_equal Plume.parameters(Plume.parse("SELECT ?").first).count, 1
+	assert_raises(ArgumentError) { Plume.parameters("SELECT ?; SELECT ?") }
+end

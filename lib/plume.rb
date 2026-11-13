@@ -20,6 +20,7 @@ module Plume
 	autoload :Catalog, "plume/catalog"
 	autoload :Printer, "plume/printer"
 	autoload :Analysis, "plume/analysis"
+	autoload :Parameters, "plume/parameters"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
@@ -196,6 +197,14 @@ module Plume
 		line = src.byteslice(line_start, line_end - line_start).force_encoding(Encoding::UTF_8)
 		caret = (" " * (beg - line_start)) + ("^" * [fin - beg, 1].max)
 		"  #{line}\n  #{caret}"
+	end
+
+	# The bind parameters of one statement, given as SQL or already parsed
+	def self.parameters(sql)
+		statements = (Node === sql) ? [sql] : Array(Parser.new(sql).parse)
+		raise ArgumentError, "expected exactly one statement, got #{statements.size}" unless statements.size == 1
+
+		Parameters.new(statements.first)
 	end
 
 	def self.reads(...) = Analysis.reads(...)
