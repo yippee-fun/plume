@@ -275,4 +275,5 @@ module Plume
 	def self.reads(...) = Analysis.reads(...)
 	def self.writes(...) = Analysis.writes(...)
 	def self.access(...) = Analysis.access(...)
+	def self.summary(...) = Analysis.summary(...)
 end

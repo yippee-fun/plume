@@ -161,3 +161,28 @@ test "a join may have 64 tables, as in SQLite" do
 	error = assert_raises(Plume::Analysis::Error) { access("SELECT 1 FROM users, (#{(["teams"] * 64).join(", ")})") }
 	assert_equal error.message, "at most 64 tables in a join"
 end
+
+# -- several statements
+
+test "summary analyzes each statement and merges what they touch" do
+	summary = Plume.summary("CREATE TABLE x (a); INSERT INTO x SELECT lower(b) FROM y AS yy; SELECT a FROM x; DELETE FROM z")
+
+	assert_equal summary.statement_types, ["CreateTableStatement", "InsertStatement", "SelectStatement", "DeleteStatement"]
+	assert_equal summary.accesses.map(&:nil?), [true, false, false, false]
+	assert_equal summary.tables, Set["x", "y", "z"]
+	assert_equal [summary.tables(:insert), summary.tables(:delete), summary.tables(:projected)], [Set["x"], Set["z"], Set["y", "x"]]
+	assert_equal [summary.calls, summary.aliases], [Set["lower"], { "yy" => "y" }]
+end
+
+test "summary is as strict as access, statement by statement" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a)")
+
+	assert_raises(Plume::Analysis::Error) { Plume.summary("SELECT a FROM t; SELECT nope FROM t", catalog:) }
+	summary = Plume.summary("SELECT a FROM t; SELECT nope FROM t", catalog:, strict: false)
+	assert_equal [summary.resolved?, summary.unresolved.map(&:name)], [false, ["nope"]]
+end
+
+test "summary takes what was already parsed" do
+	assert_equal Plume.summary(Plume.parse("SELECT 1; SELECT 2")).statement_types, ["SelectStatement", "SelectStatement"]
+	assert_equal Plume.summary("").statement_types, []
+end
