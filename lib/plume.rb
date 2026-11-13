@@ -187,6 +187,50 @@ module Plume
 		true
 	end
 
+	# The statements in `sql`, found by their tokens alone, so SQL that does not parse splits too.
+	# Each is its text from its first token to its last, without the semicolon; `with_positions`
+	# gives `[text, beg, fin]` with the byte range. A trigger's body stays in one piece
+	def self.split(sql, with_positions: false)
+		lexer = Lexer.new(sql, skip_spaces: true)
+		statements = []
+		beg = fin = nil
+		leading = [] # the first tokens of the statement, enough to tell a CREATE TRIGGER
+		body = cases = 0
+
+		while (token = lexer.next_token)
+			if token == :SEMI && body.zero?
+				statements << [beg, fin] if beg
+				beg = nil
+				leading.clear
+				cases = 0
+				next
+			end
+
+			beg ||= lexer.anchor
+			fin = lexer.cursor
+			leading << token if leading.size < 3
+			trigger = leading[0] == :CREATE && (leading[1] == :TRIGGER || ((leading[1] in :TEMP | :TEMPORARY) && leading[2] == :TRIGGER))
+			next unless trigger
+
+			# Only END closes the body, and a CASE inside it has an END of its own
+			case token
+			when :BEGIN then body += 1 if body.zero?
+			when :CASE then cases += 1 if body.positive?
+			when :END
+				if cases.positive? then cases -= 1
+				elsif body.positive? then body -= 1
+				end
+			end
+		end
+		statements << [beg, fin] if beg
+
+		src = sql.b
+		statements.map do |b, f|
+			text = src.byteslice(b, f - b).force_encoding(sql.encoding)
+			with_positions ? [text, b, f] : text
+		end
+	end
+
 	def self.parse(sql)
 		Parser.new(sql).parse
 	end

@@ -207,6 +207,13 @@ stmt.transform { |node, parent| Plume::LiteralExpression === node && !(Plume::Or
 
 Only the nodes on the way to a replacement are copied, and the rest is shared with the original. Neither method recurses, so trees as deep as SQLite allows are fine. This works on shareable trees as well.
 
+`Plume.split` finds the statements in a script by their tokens alone, so it also works on SQL that doesn't parse. A trigger's body stays in one piece:
+
+```ruby
+Plume.split("SELECT 1; CREATE TRIGGER t AFTER INSERT ON x BEGIN DELETE FROM y; END; SELEC oops")
+# => ["SELECT 1", "CREATE TRIGGER t AFTER INSERT ON x BEGIN DELETE FROM y; END", "SELEC oops"]
+```
+
 Tokenize SQL with `Plume.tokenize`:
 
 ```ruby
