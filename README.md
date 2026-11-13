@@ -204,6 +204,13 @@ tokens = Plume.tokenize("SELECT * FROM users WHERE id = 1")
 # => [:SELECT, :STAR, :FROM, :ID, :WHERE, :ID, :EQ, :INTEGER]
 ```
 
+`with_values: true` adds each token's text, and `with_positions: true` its byte range in the SQL - for highlighting, or for finding a token's place in the original:
+
+```ruby
+Plume.tokenize("SELECT a FROM t", with_values: true, with_positions: true)
+# => [[:SELECT, "SELECT", 0, 6], [:ID, "a", 7, 8], [:FROM, "FROM", 9, 13], [:ID, "t", 14, 15]]
+```
+
 The lexer knows _183_ token types: _153_ keywords, and _30_ more for punctuation, operators, literals and names. Words like `rowid`, `strict` and `stored`, which SQLite reads as plain names and checks by their text, are keywords here that fall back to names wherever SQLite would take a name.
 
 ### What does this query read?

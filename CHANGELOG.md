@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 - `Plume::SyntaxError` carries `location`, `position`, `token`, `line` and `expected`, so tools can point at the error without reading the message
+- `Plume.tokenize(sql, with_positions: true)` gives each token's byte range
 - `Plume.writes`: which tables and columns an INSERT, UPDATE or DELETE would write - the same `Writes` that `Plume.access` returns, without the reads
 - `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
 - `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
