@@ -179,6 +179,18 @@ test "a syntax error points at the offending line" do
 	]
 end
 
+test "a syntax error says where it is without parsing the message" do
+	error = assert_raises(Plume::SyntaxError) { Plume.parse("select a,\n  b\nfrom t where and x") }
+
+	assert_equal [error.location, error.position, error.token, error.line, error.expected], [[27, 30], 27, :AND, 3, ["<basic expression>"]]
+end
+
+test "a syntax error at the end of input has no token, and stays inside the SQL" do
+	error = assert_raises(Plume::SyntaxError) { Plume.parse("select * from") }
+
+	assert_equal [error.location, error.token, error.line], [[13, 13], nil, 1]
+end
+
 test "running out of SQL is an error too" do
 	error = assert_raises(Plume::SyntaxError) { Plume.parse("select * from") }
 

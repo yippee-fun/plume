@@ -10,9 +10,16 @@ module Plume
 				@sql, @token, @beg, @fin, @expected = sql, token, beg, fin, expected
 			end
 
+			def to_error
+				# At the end of input the span sits one byte past the SQL
+				location = [@beg, [@fin, @sql.bytesize].min].freeze
+				SyntaxError.new(msg, location:, token: @token, line:, expected: @expected.freeze)
+			end
+
+			def line = @sql.b.byteslice(0, @beg).count("\n") + 1
+
 			def msg
 				src = @sql.b # the SQL can be invalid UTF-8, which String#strip will not take
-				line = src.byteslice(0, @beg).count("\n") + 1
 				where = src.strip.include?("\n") ? " line #{line}" : ""
 				what = @token ? "token #{@token}[#{@sql.byteslice(@beg, @fin - @beg).inspect}]" : "end of input"
 				"Unexpected #{what} at#{where}:\n#{Plume.excerpt(@sql, @beg, @fin)}\n  Expected one of: #{@expected.join(", ")}\n"
@@ -154,7 +161,7 @@ module Plume
 			result = catch(:ERROR) { sql_stmt_list }
 
 			if ErrorMessage === result
-				raise SyntaxError.new(result.msg)
+				raise result.to_error
 			else
 				result
 			end
