@@ -27,6 +27,7 @@ module Plume
 	autoload :Comment, "plume/comment"
 	autoload :Comments, "plume/comment"
 	autoload :Normalize, "plume/normalize"
+	autoload :Fingerprint, "plume/fingerprint"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
@@ -267,6 +268,9 @@ module Plume
 	def self.truncate(sql, max_length) = Truncate.call((Node === sql) ? sql.to_sql : sql, max_length)
 	# The SQL with its constants turned into `?`, see Plume::Normalize. A parsed tree gives a tree back
 	def self.normalize(sql) = (Node === sql) ? Normalize.tree(sql) : Normalize.text(sql)
+
+	# The same for the same query whatever its values and spelling, see Plume::Fingerprint
+	def self.fingerprint(sql) = Fingerprint.of((Node === sql || Array === sql) ? sql : Parser.new(sql).parse)
 
 	def self.reads(...) = Analysis.reads(...)
 	def self.writes(...) = Analysis.writes(...)
