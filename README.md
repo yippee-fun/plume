@@ -417,6 +417,26 @@ access.reads.columns     # => {"posts" => #<Set: {"title", "user_id"}>, "users" 
 access.writes.updated    # => {"users" => #<Set: {"name"}>}
 ```
 
+### What else does a statement do?
+
+`Plume.access` takes every other kind of statement too, and reports in `actions` what it does besides reading and writing rows. The names follow SQLite's authorizer action codes, and the actions are checked against it:
+
+```ruby
+catalog = Plume::Catalog.from_sql(<<~SQL)
+  CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT UNIQUE);
+  CREATE TRIGGER touch AFTER UPDATE ON posts BEGIN SELECT 1; END;
+SQL
+
+Plume.access("DROP TABLE posts", catalog:).actions.map { |a| [a.action, a.name, a.detail] }
+# => [[:drop_table, "posts", nil], [:drop_trigger, "touch", "posts"]]
+Plume.access("CREATE TEMP TABLE drafts (slug PRIMARY KEY)").actions.map { |a| [a.action, a.name] }
+# => [[:create_temp_table, "drafts"], [:create_temp_index, "sqlite_autoindex_drafts_1"]]
+```
+
+Each action has an `action` (`:create_table`, `:drop_temp_index`, `:alter_table`, `:pragma`, `:transaction`, `:savepoint`, `:attach`, `:reindex` and the rest), a `name`, a `detail` (the table an index or trigger is on, a pragma's value, the column `ALTER TABLE` drops) and a `schema`.
+
+As with SQLite, a `CREATE TABLE … AS` reads what its `SELECT` reads, a `CREATE INDEX` reads the columns it indexes, and `DROP TABLE` deletes the table's rows. A `CREATE VIEW` reads nothing, because SQLite only checks a view's body when the view is used. `EXPLAIN` reports what the statement it explains would do. The catalog also keeps track of indexes and triggers, which is how a `DROP INDEX` knows its table.
+
 ### What does a whole script touch?
 
 `reads`, `writes` and `access` each take exactly one statement. `Plume.summary` takes any number of statements, such as a migration or a batch from a log, and merges what they touch:
@@ -432,10 +452,11 @@ summary.statement_types  # => ["CreateTableStatement", "InsertStatement", "Delet
 summary.tables           # => #<Set: {"posts", "archive"}>
 summary.tables(:delete)  # => #<Set: {"posts"}>
 summary.calls            # => #<Set: {"upper"}>
-summary.accesses         # => [nil, #<data Plume::Analysis::Access ...>, #<data Plume::Analysis::Access ...>]
+summary.actions.map(&:action)  # => [:create_table]
+summary.accesses         # => one Plume::Analysis::Access per statement
 ```
 
-It takes the same `catalog:` and `strict:` arguments. Statements other than `SELECT`, `INSERT`, `UPDATE`, `DELETE` and `CREATE TRIGGER` are listed but not analyzed, so their entry in `accesses` is `nil`.
+It takes the same `catalog:` and `strict:` arguments.
 
 ### Ractors
 

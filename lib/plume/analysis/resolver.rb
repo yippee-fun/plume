@@ -56,7 +56,7 @@ module Plume
 				"generate_series" => %w[value start stop step].freeze,
 			}.freeze
 
-			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement, CreateTriggerStatement].freeze
+			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement, CreateTriggerStatement].freeze # analyzed for reads and writes
 
 			# What SQLite calls for these operators and keywords, as its authorizer names them
 			OPERATOR_FUNCTIONS = {
@@ -80,9 +80,11 @@ module Plume
 				when UpdateStatement then update(statement)
 				when DeleteStatement then delete(statement)
 				when CreateTriggerStatement then trigger(statement)
+				when ExplainStatement then return analyze(statement.statement)
+				else schema_statement(statement)
 				end
 
-				Access.new(reads: @reads, writes: @writes)
+				Access.new(reads: @reads, writes: @writes, actions: @actions.freeze)
 			end
 
 			# Names of the columns a select produces, nil for the ones we cannot name
@@ -96,6 +98,7 @@ module Plume
 			def start(statement)
 				@reads = Reads.new(statement)
 				@writes = Writes.new(statement, @reads.unresolved, @reads.ctes, @reads.aliases)
+				@actions = []
 				# By identity: a view holds its parsed select, and hashing that hashes the whole tree
 				@expanding_views = Set.new.compare_by_identity
 			end
@@ -170,9 +173,161 @@ module Plume
 				tail(statement, scope)
 			end
 
+			# -- schema changes and the rest
+
+			def schema_statement(statement)
+				case statement
+				when CreateTableStatement
+					schema = new_schema(statement.table, statement.temporary)
+					act(:create_table, temp: schema, name: statement.table.name, node: statement)
+					Catalog.autoindexes(statement).each { |index| act(:create_index, temp: schema, name: index, detail: statement.table.name, node: statement) }
+					select(statement.select_statement, parent: nil, usage: :projected) if statement.select_statement
+				when CreateViewStatement
+					# SQLite checks a view's body when the view is used, not when it is made
+					act(:create_view, temp: new_schema(statement.view, statement.temporary), name: statement.view.name, node: statement)
+				when CreateIndexStatement then create_index(statement)
+				when CreateVirtualTableStatement
+					act(:create_vtable, name: statement.table.name, detail: statement.module_name, schema: new_schema(statement.table, false), node: statement)
+				when DropStatement then drop(statement)
+				when AlterTableStatement
+					table = @catalog&.table(statement.table.table, schema: statement.table.schema)
+					detail = statement.column if statement.action == :DROP_COLUMN
+					act(:alter_table, name: table&.name || statement.table.table, detail:, schema: table&.schema || statement.table.schema || "main", node: statement)
+				when PragmaStatement
+					act(:pragma, name: statement.name, detail: pragma_value(statement), schema: statement.schema, node: statement)
+				when BeginStatement then act(:transaction, name: "BEGIN", node: statement)
+				when CommitStatement then act(:transaction, name: "COMMIT", node: statement)
+				when RollbackStatement
+					if statement.savepoint
+						act(:savepoint, name: "ROLLBACK", detail: statement.savepoint, node: statement)
+					else
+						act(:transaction, name: "ROLLBACK", node: statement)
+					end
+				when SavepointStatement then act(:savepoint, name: "BEGIN", detail: statement.name, node: statement)
+				when ReleaseStatement then act(:savepoint, name: "RELEASE", detail: statement.name, node: statement)
+				when AttachStatement then act(:attach, name: plain_value(statement.file), node: statement)
+				when DetachStatement then act(:detach, name: plain_value(statement.schema), node: statement)
+				when ReindexStatement then reindex(statement)
+				when AnalyzeStatement then analyze_tables(statement)
+				end
+			end
+
+			def create_index(statement)
+				schema = statement.index.schema
+				table_node = TableName.new(schema:, table: statement.table)
+				act(:create_index, temp: new_schema(statement.index, false, on: table_node), name: statement.index.name, detail: statement.table, node: statement)
+				scope = Scope.new(sources: [], parent: nil, ctes: {}, aliases: {})
+				add_table_source(table_node, scope, :referenced)
+				# The table's rows are read to fill the index, which only an authorizer sees as columns
+				@reads.references.pop if @reads.references.last&.column.nil?
+				statement.columns&.each { |term| expression(term.expression, scope, :referenced) }
+				expression(statement.condition, scope, :referenced)
+				act(:reindex, name: statement.index.name, schema: @actions.last.schema, node: statement)
+			end
+
+			def drop(statement)
+				target = statement.target
+				case statement.type
+				when :TABLE
+					table = @catalog&.table(target.table, schema: target.schema)
+					if table&.module_name
+						act(:drop_vtable, name: table.name, detail: table.module_name, schema: table.schema, node: statement)
+					else
+						act(:drop_table, temp: table&.schema || target.schema || "main", name: table&.name || target.table, node: statement)
+					end
+					@writes.references << Reference.new(schema: table&.schema || target.schema, table: table&.name || target.table, column: nil, usage: :delete, node: statement)
+					drop_triggers(table, statement)
+				when :VIEW
+					view = @catalog&.view(target.table, schema: target.schema)
+					act(:drop_view, temp: view&.schema || target.schema || "main", name: view&.name || target.table, node: statement)
+					drop_triggers(view, statement)
+				when :INDEX
+					index = @catalog&.index(target.table, schema: target.schema)
+					act(:drop_index, temp: index&.schema || target.schema || "main", name: index&.name || target.table, detail: index&.table, node: statement)
+				when :TRIGGER
+					trigger = @catalog&.trigger(target.table, schema: target.schema)
+					act(:drop_trigger, temp: trigger&.schema || target.schema || "main", name: trigger&.name || target.table, detail: trigger&.table, node: statement)
+				end
+			end
+
+			# Dropping a table or view drops its triggers, newest first
+			def drop_triggers(object, statement)
+				return unless object
+
+				triggers = @catalog.triggers.select { |t| t.schema.casecmp?(object.schema) && t.table.casecmp?(object.name) }
+				triggers.reverse_each { |t| act(:drop_trigger, temp: t.schema, name: t.name, detail: t.table, node: statement) }
+			end
+
+			# `temp:` takes the schema and makes the action its _temp_ variant when that schema is temp
+			def act(action, node:, name: nil, detail: nil, schema: nil, temp: nil)
+				if temp
+					schema = temp
+					action = action.name.sub(/\A(create|drop)_/) { "#{$1}_temp_" }.to_sym if temp.casecmp?("temp")
+				end
+				@actions << Action.new(action:, name:, detail:, schema:, node:)
+			end
+
+			# Where a new object goes: the schema it names, temp for TEMP, or the schema of the table it is on
+			def new_schema(name, temporary, on: nil)
+				return name.schema if name.schema
+				return "temp" if temporary
+				return @catalog&.table(on.table)&.schema || "main" if on
+
+				"main"
+			end
+
+			# REINDEX names an index, a table whose indexes to rebuild, or a collation - and SQLite's
+			# authorizer is asked about each index rebuilt. Without a catalog only a name is known
+			def reindex(statement)
+				target = statement.target
+				return target && act(:reindex, name: target.table, schema: target.schema || "main", node: statement) unless @catalog
+
+				indexes =
+					if target.nil? then @catalog.indexes
+					elsif (index = @catalog.index(target.table, schema: target.schema)) then [index]
+					elsif (table = @catalog.table(target.table, schema: target.schema))
+						@catalog.indexes.select { |i| i.schema == table.schema && i.table.casecmp?(table.name) }
+					else
+						[]
+					end
+				indexes.each { |i| act(:reindex, name: i.name, schema: i.schema, node: statement) }
+			end
+
+			# ANALYZE names a table, an index, a schema, or nothing for every schema but temp
+			def analyze_tables(statement)
+				target = statement.target
+				return target && act(:analyze, name: target.table, schema: target.schema || "main", node: statement) unless @catalog
+
+				tables =
+					if target.nil? then @catalog.tables.reject { |t| t.schema.casecmp?("temp") }
+					elsif (table = @catalog.table(target.table, schema: target.schema)) then [table]
+					elsif (index = @catalog.index(target.table, schema: target.schema)) then [@catalog.table(index.table, schema: index.schema)].compact
+					elsif target.schema.nil? then @catalog.tables.select { |t| t.schema.casecmp?(target.table) }
+					else
+						[]
+					end
+				tables.each { |t| act(:analyze, name: t.name, schema: t.schema, node: statement) unless t.module_name }
+			end
+
+			# SQLite hands the authorizer a PRAGMA's value as text, unquoted and without a plus sign
+			def pragma_value(statement)
+				src = statement.value_tk_src or return
+				(src.match?(/\A['"]/) ? statement.value_tk_val.to_s : src.delete_prefix("+"))
+			end
+
+			# ATTACH and DETACH name a file or schema with any expression; a plain string or name is told
+			def plain_value(node)
+				case node
+				when LiteralExpression then node.value.to_s
+				when ColumnName then node.column
+				end
+			end
+
 			# What a trigger's WHEN and body read and write each time it fires. NEW and OLD stand for
 			# the row of the table it is on, and reading them reads that table, as SQLite's authorizer has it
 			def trigger(statement)
+				on_schema = @catalog&.table(statement.table.table, schema: statement.table.schema)&.schema
+				act(:create_trigger, temp: statement.trigger.schema || (statement.temporary ? "temp" : on_schema || "main"), name: statement.trigger.name, detail: statement.table.table, node: statement)
 				scope = Scope.new(sources: [], parent: nil, ctes: {}, aliases: {})
 				if (on = trigger_table(statement.table))
 					rows = [("new" unless statement.event == :DELETE), ("old" unless statement.event == :INSERT)].compact

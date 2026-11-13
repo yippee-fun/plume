@@ -168,7 +168,7 @@ test "summary analyzes each statement and merges what they touch" do
 	summary = Plume.summary("CREATE TABLE x (a); INSERT INTO x SELECT lower(b) FROM y AS yy; SELECT a FROM x; DELETE FROM z")
 
 	assert_equal summary.statement_types, ["CreateTableStatement", "InsertStatement", "SelectStatement", "DeleteStatement"]
-	assert_equal summary.accesses.map(&:nil?), [true, false, false, false]
+	assert_equal summary.actions.map(&:action), [:create_table]
 	assert_equal summary.tables, Set["x", "y", "z"]
 	assert_equal [summary.tables(:insert), summary.tables(:delete), summary.tables(:projected)], [Set["x"], Set["z"], Set["y", "x"]]
 	assert_equal [summary.calls, summary.aliases], [Set["lower"], { "yy" => "y" }]
@@ -202,4 +202,29 @@ test "a trigger on INSERT has no OLD row, and one on DELETE no NEW row" do
 
 	assert_equal unresolved.("CREATE TRIGGER tr BEFORE INSERT ON t BEGIN SELECT old.a, new.a; END"), ["old.a"]
 	assert_equal unresolved.("CREATE TRIGGER tr BEFORE DELETE ON t BEGIN SELECT old.a, new.a; END"), ["new.a"]
+end
+
+# -- everything else
+
+test "a statement that is not DML says what it does, in SQLite's authorizer's terms" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a UNIQUE, b); CREATE TEMP TABLE tt (c); CREATE INDEX ti ON t (b); CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END")
+	actions = -> (sql) { Plume.access(sql, catalog:).actions.map { |a| [a.action, a.name, a.detail, a.schema] } }
+
+	assert_equal actions.("CREATE TABLE x (a PRIMARY KEY, b)"), [[:create_table, "x", nil, "main"], [:create_index, "sqlite_autoindex_x_1", "x", "main"]]
+	assert_equal actions.("DROP TABLE t"), [[:drop_table, "t", nil, "main"], [:drop_trigger, "tr", "t", "main"]]
+	assert_equal actions.("DROP TABLE tt"), [[:drop_temp_table, "tt", nil, "temp"]]
+	assert_equal actions.("DROP INDEX ti"), [[:drop_index, "ti", "t", "main"]]
+	assert_equal actions.("ALTER TABLE t DROP COLUMN b"), [[:alter_table, "t", "b", "main"]]
+	assert_equal actions.("PRAGMA journal_mode = 'wal'"), [[:pragma, "journal_mode", "wal", nil]]
+	assert_equal actions.("ROLLBACK TO s"), [[:savepoint, "ROLLBACK", "s", nil]]
+	assert_equal actions.("REINDEX t").map { |a| a[1] }, ["sqlite_autoindex_t_1", "ti"]
+end
+
+test "CREATE TABLE … AS and CREATE INDEX read, DROP TABLE deletes" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a, b)")
+
+	assert_equal sorted(Plume.reads("CREATE TABLE x AS SELECT upper(a) FROM t", catalog:).columns), { "t" => ["a"] }
+	assert_equal sorted(Plume.reads("CREATE INDEX i ON t (b) WHERE a > 0", catalog:).columns), { "t" => ["a", "b"] }
+	assert_equal Plume.writes("DROP TABLE t", catalog:).deleted, Set["t"]
+	assert_equal Plume.reads("CREATE VIEW v AS SELECT a FROM t", catalog:).tables, Set[]
 end
