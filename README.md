@@ -456,7 +456,7 @@ summary.actions.map(&:action)  # => [:create_table]
 summary.accesses         # => one Plume::Analysis::Access per statement
 ```
 
-It takes the same `catalog:` and `strict:` arguments.
+It takes the same `catalog:` and `strict:` arguments. Each statement sees the schema as the statements before it left it, so a script that creates a table and then fills it checks out against a catalog that has never heard of the table. The changes go to a copy of the catalog, and the one you pass in stays as it was. `Catalog#apply(statement)` makes the same changes to a catalog of your own.
 
 ### Ractors
 

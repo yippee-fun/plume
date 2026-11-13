@@ -87,18 +87,37 @@ module Plume
 				leading = Plume.tokenize(statement_sql).first(3) - [:TEMP, :TEMPORARY]
 				next unless leading[0] == :CREATE && (leading[1] in :TABLE | :VIEW | :INDEX | :UNIQUE | :TRIGGER | :VIRTUAL)
 
-				case (statement = Parser.new(statement_sql).parse.first)
-				when CreateTableStatement then add_create_table(statement)
-				when CreateViewStatement then add_create_view(statement)
-				when CreateVirtualTableStatement
-					add_table(statement.table.name, nil, schema: statement.table.schema || "main", module_name: statement.module_name)
-				when CreateIndexStatement
-					add_index(statement.index.name, statement.table, schema: statement.index.schema || "main")
-				when CreateTriggerStatement
-					add_trigger(statement.trigger.name, statement.table.name, schema: schema_of(statement.trigger, statement))
-				end
+				apply(Parser.new(statement_sql).parse.first)
 			end
 			self
+		end
+
+		# Changes the catalog the way running `statement` would change the schema: CREATE adds,
+		# DROP removes, ALTER TABLE renames, adds and drops columns. Other statements change nothing
+		def apply(statement)
+			case statement
+			when CreateTableStatement then add_create_table(statement) unless statement.if_not_exists && table(statement.table.name, schema: statement.table.schema)
+			when CreateViewStatement then add_create_view(statement) unless statement.if_not_exists && view(statement.view.name, schema: statement.view.schema)
+			when CreateVirtualTableStatement
+				add_table(statement.table.name, nil, schema: statement.table.schema || "main", module_name: statement.module_name)
+			when CreateIndexStatement
+				schema = statement.index.schema || table(statement.table)&.schema || "main"
+				add_index(statement.index.name, statement.table, schema:)
+			when CreateTriggerStatement
+				schema = statement.trigger.schema || (statement.temporary ? "temp" : table(statement.table.table)&.schema || "main")
+				add_trigger(statement.trigger.name, statement.table.table, schema:)
+			when DropStatement then drop(statement.type, statement.target)
+			when AlterTableStatement then alter(statement)
+			end
+			self
+		end
+
+		def initialize_copy(other)
+			super
+			@tables = @tables.dup
+			@views = @views.dup
+			@indexes = @indexes.dup
+			@triggers = @triggers.dup
 		end
 
 		def load_sqlite(db)
@@ -124,6 +143,60 @@ module Plume
 		def self.split_statements(sql) = Plume.split(sql)
 
 		private
+
+		def drop(type, target)
+			collection = { TABLE: @tables, VIEW: @views, INDEX: @indexes, TRIGGER: @triggers }.fetch(type)
+			object = lookup(collection, target.table, target.schema) or return
+			collection.delete(key(object.schema, object.name))
+			return unless type == :TABLE || type == :VIEW
+
+			# A table takes its indexes and triggers with it, a view its triggers
+			[@indexes, @triggers].each do |dependents|
+				dependents.delete_if { |_, d| d.schema.casecmp?(object.schema) && d.table.casecmp?(object.name) }
+			end
+		end
+
+		def alter(statement)
+			table = table(statement.table.table, schema: statement.table.schema) or return
+			columns = table.columns
+			rename = -> (list, from, to) { list&.map { |c| c.casecmp?(from) ? to : c } }
+
+			changed =
+				case statement.action
+				when :RENAME_TABLE then return rename_table(table, statement.new_name)
+				when :ADD_COLUMN
+					definition = statement.column_definition
+					generated = definition.constraints&.any?(GeneratedAsColumnConstraint)
+					table.with(columns: columns && [*columns, definition.name].freeze, generated_columns: generated ? [*table.generated_columns, definition.name].freeze : table.generated_columns)
+				when :RENAME_COLUMN
+					from, to = statement.column, statement.new_name
+					table.with(
+						columns: rename.(columns, from, to)&.freeze, generated_columns: rename.(table.generated_columns, from, to).freeze,
+						rowid_alias: table.rowid_alias&.casecmp?(from) ? to : table.rowid_alias,
+					)
+				when :DROP_COLUMN
+					gone = -> (list) { list&.reject { |c| c.casecmp?(statement.column) }&.freeze }
+					table.with(columns: gone.(columns), generated_columns: gone.(table.generated_columns))
+				else return
+				end
+			@tables[key(table.schema, table.name)] = changed
+		end
+
+		def rename_table(table, new_name)
+			@tables.delete(key(table.schema, table.name))
+			@tables[key(table.schema, new_name)] = table.with(name: new_name)
+			old_prefix = "sqlite_autoindex_#{table.name}_"
+			@indexes.transform_values! { |i| (i.schema.casecmp?(table.schema) && i.table.casecmp?(table.name)) ? i.with(table: new_name) : i }
+			@indexes.keys.each do |k|
+				index = @indexes[k]
+				next unless index.name.start_with?(old_prefix) && index.table == new_name
+
+				@indexes.delete(k)
+				renamed = index.with(name: index.name.sub(old_prefix, "sqlite_autoindex_#{new_name}_"))
+				@indexes[key(renamed.schema, renamed.name)] = renamed
+			end
+			@triggers.transform_values! { |t| (t.schema.casecmp?(table.schema) && t.table.casecmp?(table.name)) ? t.with(table: new_name) : t }
+		end
 
 		def key(schema, name) = [schema.to_s.downcase(:ascii), name.to_s.downcase(:ascii)].freeze
 
