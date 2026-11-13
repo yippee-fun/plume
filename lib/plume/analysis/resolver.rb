@@ -56,7 +56,7 @@ module Plume
 				"generate_series" => %w[value start stop step].freeze,
 			}.freeze
 
-			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement].freeze
+			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement, CreateTriggerStatement].freeze
 
 			# What SQLite calls for these operators and keywords, as its authorizer names them
 			OPERATOR_FUNCTIONS = {
@@ -79,6 +79,7 @@ module Plume
 				when InsertStatement then insert(statement)
 				when UpdateStatement then update(statement)
 				when DeleteStatement then delete(statement)
+				when CreateTriggerStatement then trigger(statement)
 				end
 
 				Access.new(reads: @reads, writes: @writes)
@@ -110,8 +111,8 @@ module Plume
 
 			# -- INSERT, UPDATE, DELETE
 
-			def insert(statement)
-				outer = with_scope(statement.with_clause, nil)
+			def insert(statement, parent: nil)
+				outer = with_scope(statement.with_clause, parent)
 				# The rows being inserted cannot see the target table, upserts and RETURNING can
 				select(statement.select, parent: outer, usage: :projected) if statement.select
 
@@ -142,8 +143,8 @@ module Plume
 				returning(statement.returning, scope, target)
 			end
 
-			def update(statement)
-				outer = with_scope(statement.with_clause, nil)
+			def update(statement, parent: nil)
+				outer = with_scope(statement.with_clause, parent)
 				scope = Scope.new(sources: [], parent: outer, ctes: {}, aliases: {})
 				target = add_target(statement.table, scope)
 				if statement.source
@@ -158,8 +159,8 @@ module Plume
 				tail(statement, scope)
 			end
 
-			def delete(statement)
-				outer = with_scope(statement.with_clause, nil)
+			def delete(statement, parent: nil)
+				outer = with_scope(statement.with_clause, parent)
 				scope = Scope.new(sources: [], parent: outer, ctes: {}, aliases: {})
 				target = add_target(statement.table, scope)
 
@@ -167,6 +168,32 @@ module Plume
 				expression(statement.condition, scope, :referenced)
 				returning(statement.returning, scope, target)
 				tail(statement, scope)
+			end
+
+			# What a trigger's WHEN and body read and write each time it fires. NEW and OLD stand for
+			# the row of the table it is on, and reading them reads that table, as SQLite's authorizer has it
+			def trigger(statement)
+				scope = Scope.new(sources: [], parent: nil, ctes: {}, aliases: {})
+				if (on = trigger_table(statement.table))
+					rows = [("new" unless statement.event == :DELETE), ("old" unless statement.event == :INSERT)].compact
+					rows.each { |name| scope.sources << on.dup.tap { |row| row.name, row.qualified_only = name, true } }
+				end
+
+				expression(statement.condition, scope, :referenced)
+				statement.statements.each do |body|
+					case body
+					when SelectStatement then select(body, parent: scope, usage: :projected)
+					when InsertStatement then insert(body, parent: scope)
+					when UpdateStatement then update(body, parent: scope)
+					when DeleteStatement then delete(body, parent: scope)
+					end
+				end
+			end
+
+			# The table or view a trigger is on, which it neither reads nor writes by being on it
+			def trigger_table(node)
+				scope = Scope.new(sources: [], parent: nil, ctes: {}, aliases: {})
+				add_target(node, scope)
 			end
 
 			# Assigned values end up in the table, so whatever they read counts as projected

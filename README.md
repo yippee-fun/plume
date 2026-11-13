@@ -376,7 +376,7 @@ Around the edges:
 - An `INSERT` without a column list writes every column of the table except generated ones, or `"*"` without a catalog. `DEFAULT VALUES` writes the table but names no columns.
 - Setting `rowid`, `oid` or `_rowid_` writes `"ROWID"`, even when an `INTEGER PRIMARY KEY` stands in for it - unless the table has a real column by that name.
 - `RETURNING` and CTEs only read. A CTE never stands in for the table being written, even when it has the same name.
-- Writing to a view reports the view. Plume does not look into triggers, so what an `INSTEAD OF` trigger or any other trigger writes is not reported, and neither are the rows a `REPLACE` deletes to make room.
+- Writing to a view reports the view. The triggers a statement fires are not looked into, so what an `INSTEAD OF` trigger or any other trigger writes is not reported, and neither are the rows a `REPLACE` deletes to make room. Pass the `CREATE TRIGGER` itself to find out what a trigger does - see below.
 - A `SELECT` writes nothing.
 - Tables outside `main` are keyed with their schema, as in `"aux.users"`.
 
@@ -405,6 +405,18 @@ A value copied into a column being written counts as projected, just like one re
 
 Writes are checked against the authorizer as well, and must match it exactly - except for the columns of an `INSERT`, which the authorizer does not name.
 
+`Plume.access`, `reads` and `writes` also take a `CREATE TRIGGER`. They report what its `WHEN` clause and body read, write and call each time the trigger fires. `NEW` and `OLD` stand for the row of the table the trigger is on, so reading `new.total` reads that table, as SQLite's authorizer reports it:
+
+```ruby
+access = Plume.access(<<~SQL, catalog: catalog)
+  CREATE TRIGGER audit AFTER UPDATE ON posts WHEN new.title <> old.title BEGIN
+    UPDATE users SET name = upper(name) WHERE id = new.user_id;
+  END
+SQL
+access.reads.columns     # => {"posts" => #<Set: {"title", "user_id"}>, "users" => #<Set: {"name", "id"}>}
+access.writes.updated    # => {"users" => #<Set: {"name"}>}
+```
+
 ### What does a whole script touch?
 
 `reads`, `writes` and `access` each take exactly one statement. `Plume.summary` takes any number of statements, such as a migration or a batch from a log, and merges what they touch:
@@ -423,7 +435,7 @@ summary.calls            # => #<Set: {"upper"}>
 summary.accesses         # => [nil, #<data Plume::Analysis::Access ...>, #<data Plume::Analysis::Access ...>]
 ```
 
-It takes the same `catalog:` and `strict:` arguments. Statements other than `SELECT`, `INSERT`, `UPDATE` and `DELETE` are listed but not analyzed, so their entry in `accesses` is `nil`.
+It takes the same `catalog:` and `strict:` arguments. Statements other than `SELECT`, `INSERT`, `UPDATE`, `DELETE` and `CREATE TRIGGER` are listed but not analyzed, so their entry in `accesses` is `nil`.
 
 ### Ractors
 

@@ -156,18 +156,19 @@ module Plume
 		def self.reads(sql, catalog: nil, strict: true) = access(sql, catalog:, strict:).reads
 
 		# Which tables and columns an INSERT, UPDATE or DELETE would write, with the same arguments
-		# and strictness as `reads`. A SELECT writes nothing. Triggers are not looked into, so rows
+		# and strictness as `reads`. A SELECT writes nothing. The triggers a statement fires are not looked into, so rows
 		# they write elsewhere - or the rows a REPLACE deletes - are not reported.
 		def self.writes(sql, catalog: nil, strict: true) = access(sql, catalog:, strict:).writes
 
-		# Like `reads`, but also reports what an INSERT, UPDATE or DELETE writes
+		# Like `reads`, but also reports what an INSERT, UPDATE or DELETE writes. A CREATE TRIGGER is
+		# analyzed for what its WHEN and body do each time it fires
 		def self.access(sql, catalog: nil, strict: true)
 			statements = statements(sql)
 			raise Error, "expected exactly one statement, got #{statements.size}" unless statements.size == 1
 
 			statement = statements.first
 			unless Resolver::STATEMENTS.any? { |klass| klass === statement }
-				raise Error, "only SELECT, INSERT, UPDATE and DELETE can be analyzed, got #{statement.class.name}"
+				raise Error, "only SELECT, INSERT, UPDATE, DELETE and CREATE TRIGGER can be analyzed, got #{statement.class.name}"
 			end
 
 			access = begin
@@ -182,7 +183,7 @@ module Plume
 		end
 
 		# Reads and writes for any number of statements, a migration or a whole log line - with the
-		# same arguments as `access`. Statements other than SELECT, INSERT, UPDATE and DELETE are
+		# same arguments as `access`. Statements other than SELECT, INSERT, UPDATE, DELETE and CREATE TRIGGER are
 		# listed in `statement_types` but not analyzed. Each statement is analyzed against the catalog
 		# as given, without the tables the statements before it create
 		def self.summary(sql, catalog: nil, strict: true)
