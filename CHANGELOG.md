@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 - Fixed: analyzing a PRAGMA whose value is not valid UTF-8 raised `ArgumentError` instead of reporting the pragma
+- Fixed: naming the columns of a scalar subquery walked its source text again at each enclosing query, so a chain of them took quadratic time. Reads are unchanged, as are the names of `FROM` subqueries, CTEs, views, and `CREATE TABLE AS`
 
 ## [0.3.0] - 2026-11-14
 
