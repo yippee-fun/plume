@@ -210,6 +210,13 @@ test "select j.value, u.email from users u, json_each(u.secret) j" do
 	assert_equal sorted(r.columns), { "users" => ["email", "secret"] }
 end
 
+test "calls lists every function called, by operators and keywords too, and in views" do
+	r = reads("select lower(u.email), count(*) from users u where u.email like 'x' and u.secret -> '$.a' and current_date group by 1")
+
+	assert_equal r.calls.to_a.sort, ["->", "count", "current_date", "like", "lower"]
+	assert_equal reads("select j.value from json_each('[]') j").calls.to_a, []
+end
+
 # -- strictness
 
 test "select nope from users raises with a pointer at the culprit" do

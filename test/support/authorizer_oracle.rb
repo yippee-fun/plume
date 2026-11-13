@@ -9,8 +9,9 @@ class AuthorizerOracle
 	SQLITE_INSERT = 18
 	SQLITE_READ = 20
 	SQLITE_UPDATE = 23
+	SQLITE_FUNCTION = 31
 
-	Result = Data.define(:tables, :columns, :inserted, :updated, :deleted)
+	Result = Data.define(:tables, :columns, :inserted, :updated, :deleted, :calls)
 
 	attr_reader :db, :catalog
 
@@ -20,7 +21,7 @@ class AuthorizerOracle
 		@catalog = Plume::Catalog.from_sqlite(@db)
 		@events = []
 		@db.authorizer = proc do |action, table, column, *|
-			# The names come as bytes, and are UTF-8 since the schema was
+			# The names come as bytes, and are UTF-8 since the schema was. A function's name comes second
 			@events << [action, table&.dup&.force_encoding(Encoding::UTF_8), column&.dup&.force_encoding(Encoding::UTF_8)]
 			0
 		end
@@ -41,6 +42,7 @@ class AuthorizerOracle
 		inserted = Set.new
 		updated = Hash.new { |h, k| h[k] = Set.new }
 		deleted = Set.new
+		calls = @events.filter_map { |action, _, name| name if action == SQLITE_FUNCTION }.to_set
 		# For INSERT and DELETE the table comes as the first argument, the second is the schema
 		@events.each do |action, table, column|
 			next unless table && (name = known[table.downcase(:ascii)])
@@ -54,6 +56,6 @@ class AuthorizerOracle
 				columns[name] << (column.casecmp?("rowid") ? "rowid" : column) unless column.nil? || column.empty?
 			end
 		end
-		Result.new(tables:, columns: columns.to_h, inserted:, updated: updated.to_h, deleted:)
+		Result.new(tables:, columns: columns.to_h, inserted:, updated: updated.to_h, deleted:, calls:)
 	end
 end

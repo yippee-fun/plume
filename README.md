@@ -330,7 +330,10 @@ reads.tables     # => #<Set: {"posts", "users"}>
 reads.columns    # => {"posts" => #<Set: {"id", "user_id", "title"}>, "users" => #<Set: {"id", "name", "email"}>}
 reads.projected  # columns whose values can end up in the result rows
 reads.referenced # columns only used to filter, join, sort or group
+reads.calls      # => #<Set: {"like"}>
 ```
+
+`reads.calls` lists the functions the statement calls, including the ones inside the views it reads. It also covers what `LIKE`, `GLOB`, `REGEXP`, `MATCH`, `->`, `->>` and `CURRENT_*` call, because SQLite's authorizer counts those as calls too. Table-valued functions in `FROM`, like `json_each`, are listed separately in `reads.functions`.
 
 `Plume.reads` also takes what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed. So do `Plume.writes` and `Plume.access` below.
 

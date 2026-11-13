@@ -58,6 +58,12 @@ module Plume
 
 			STATEMENTS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement].freeze
 
+			# What SQLite calls for these operators and keywords, as its authorizer names them
+			OPERATOR_FUNCTIONS = {
+				LIKE: "like", NOT_LIKE: "like", GLOB: "glob", NOT_GLOB: "glob", REGEXP: "regexp", NOT_REGEXP: "regexp",
+				MATCH: "match", NOT_MATCH: "match", EXTRACT: "->", RETRIEVE: "->>",
+			}.freeze
+
 			# SQLite's own limit, which also keeps resolving names across a join from going quadratic
 			MAX_JOIN_TABLES = 64
 
@@ -466,11 +472,20 @@ module Plume
 
 			def expression(node, scope, usage, aliases: :none)
 				case node
-				when nil, Variable, LiteralExpression then nil
+				when nil, Variable then nil
+				when LiteralExpression
+					@reads.calls << node.value.name.downcase if node.value in :CURRENT_DATE | :CURRENT_TIME | :CURRENT_TIMESTAMP
 				when ColumnName then column(node, scope, usage, aliases)
+				when FunctionReference
+					@reads.calls << node.function.downcase(:ascii)
+					node.children.each { |child| expression(child, scope, usage, aliases:) }
 				when SelectStatement then select(node, parent: scope, usage:)
 				when TableName then whole_table(node, scope)
-				when Node then node.children.each { |child| expression(child, scope, usage, aliases:) }
+				when Node
+					if node.respond_to?(:operator) && (function = OPERATOR_FUNCTIONS[node.operator])
+						@reads.calls << function
+					end
+					node.children.each { |child| expression(child, scope, usage, aliases:) }
 				end
 			end
 

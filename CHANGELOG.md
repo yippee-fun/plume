@@ -12,6 +12,7 @@
 - `Plume.split`: the statements in a script, found by their tokens alone so SQL that does not parse splits too, with byte ranges on request
 - Fixed: splitting a schema ended a trigger's body at the END of a CASE inside it, and took a table named `trigger` for a trigger, so a later BEGIN swallowed the statements after it
 - `to_sql(pretty: true)` lays SQL out over lines - a clause per line, long lists and AND/OR chains an item per line, subqueries indented - with `indent_size:`, `max_line_length:` and `commas_start_of_line:`
+- `Reads#calls`: every function a statement calls, including those LIKE, GLOB, REGEXP, MATCH, `->`, `->>` and CURRENT_* call, as SQLite's authorizer reports them
 - `Plume.writes`: which tables and columns an INSERT, UPDATE or DELETE would write - the same `Writes` that `Plume.access` returns, without the reads
 - `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
 - `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable

@@ -75,12 +75,16 @@ module Plume
 		end
 
 		class Reads < References
-			attr_reader :views, :functions
+			# `functions` are the table-valued ones in FROM, `calls` every other function called -
+			# including those LIKE, GLOB, REGEXP, MATCH, `->`, `->>` and CURRENT_* call - as SQLite's
+			# authorizer reports them
+			attr_reader :views, :functions, :calls
 
 			def initialize(...)
 				super
 				@views = Set.new
 				@functions = Set.new
+				@calls = Set.new
 			end
 
 			def projected = columns(:projected)
