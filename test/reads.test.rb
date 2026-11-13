@@ -153,6 +153,28 @@ test "select (select name from teams where id = team_id) from users" do
 	assert_equal sorted(r.referenced), { "teams" => ["id"], "users" => ["team_id"] }
 end
 
+test "select (select (select name from teams)) from users" do
+	r = reads("select (select (select name from teams)) from users")
+
+	assert_equal sorted(r.projected), { "teams" => ["name"] }
+end
+
+test "a chain of scalar subqueries still reports the column they select" do
+	sql = "name FROM teams"
+	64.times { sql = "(SELECT #{sql})" }
+	r = reads("SELECT #{sql}")
+
+	assert r.resolved?
+	assert_equal sorted(r.projected), { "teams" => ["name"] }
+end
+
+test %(select s."email || secret" from (select email || secret from users) s) do
+	r = reads(%(select s."email || secret" from (select email || secret from users) s))
+
+	assert r.resolved?
+	assert_equal sorted(r.projected), { "users" => ["email", "secret"] }
+end
+
 test "select s.e from (select email as e, secret from users) s" do
 	r = reads("select s.e from (select email as e, secret from users) s")
 

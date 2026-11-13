@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Fixed: naming the columns of a scalar subquery walked its source text again at each enclosing query, so a chain of them took quadratic time. Reads are unchanged, as are the names of `FROM` subqueries, CTEs, views, and `CREATE TABLE AS`
 - `Plume.writes`: which tables and columns an INSERT, UPDATE or DELETE would write - the same `Writes` that `Plume.access` returns, without the reads
 - `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
 - `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
