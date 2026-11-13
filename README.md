@@ -245,6 +245,16 @@ parameters.map(&:number)     # => [1, 2, 3, 1]
 
 `count`, `names` and `index` answer what `sqlite3_bind_parameter_count`, `_name` and `_index` would. Each parameter also carries its `node`, and with it the `location` it was written at.
 
+### Truncating
+
+`Plume.truncate(sql, max_length)` shortens SQL to fit a log line or an error tracker. It replaces the parts you need least to recognise the query with `...`: result columns, `WHERE` conditions, `VALUES` rows, CTE bodies, `INSERT` column lists and `UPDATE` assignments. The most deeply nested parts go first, and the longest first among those. Only if that is still not short enough is the end cut off:
+
+```ruby
+sql = "WITH recent AS (SELECT id, title FROM posts WHERE created_at > ?) SELECT r.id, r.title, u.name FROM recent r JOIN users u ON u.id = r.user_id WHERE u.active"
+Plume.truncate(sql, 100)
+# => "WITH recent AS (...) SELECT ... FROM recent r JOIN users u ON u.id = r.user_id WHERE u.active"
+```
+
 ### What does this query read?
 
 `Plume.reads` works out which tables and columns a statement would read, looking through aliases, joins, subqueries, CTEs and views:

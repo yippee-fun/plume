@@ -22,6 +22,7 @@ module Plume
 	autoload :Analysis, "plume/analysis"
 	autoload :Parameters, "plume/parameters"
 	autoload :Dump, "plume/dump"
+	autoload :Truncate, "plume/truncate"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
@@ -210,6 +211,9 @@ module Plume
 
 	# A tree from what `Node#dump` gave, or a list of them
 	def self.load(dump) = Dump.load(dump)
+	# At most `max_length` characters of `sql`, with the least telling parts left out first,
+	# see Plume::Truncate. A parsed tree is printed first
+	def self.truncate(sql, max_length) = Truncate.call((Node === sql) ? sql.to_sql : sql, max_length)
 
 	def self.reads(...) = Analysis.reads(...)
 	def self.writes(...) = Analysis.writes(...)
