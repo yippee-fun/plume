@@ -93,6 +93,20 @@ module Plume
 			end
 		end
 
+		# Yields each direct child with the prop it sits in, and its index when that prop holds an array
+		def each_child
+			# Each as one array: TruffleRuby's Enumerator hands only the first of several yielded values to `count`
+			return Enumerator.new { |y| each_child { |*slot| y << slot } } unless block_given?
+
+			self.class.literal_properties.each do |property|
+				case (value = instance_variable_get(:"@#{property.name}"))
+				when Node then yield value, property.name, nil
+				when Array then value.each_with_index { |v, i| yield v, property.name, i if Node === v }
+				end
+			end
+			self
+		end
+
 		# Yields every node in the subtree depth-first, parents before their children,
 		# along with the parent (nil for the receiver). Without recursing, so a tree as
 		# deep as SQLite allows does not run out of stack
@@ -105,6 +119,66 @@ module Plume
 				node.children.reverse_each { |child| stack << [child, node] }
 			end
 			self
+		end
+
+		# Like `walk`, but also says where under the parent each node sits: the prop's name,
+		# and the index into it when it holds an array
+		def walk_with_slots(parent = nil)
+			return Enumerator.new { |y| walk_with_slots(parent) { |*slot| y << slot } } unless block_given?
+
+			stack = [[self, parent, nil, nil]]
+			while (node, up, prop, index = stack.pop)
+				yield node, up, prop, index
+				start = stack.size
+				node.each_child { |child, name, i| stack << [child, node, name, i] }
+				stack[start..] = stack[start..].reverse
+			end
+			self
+		end
+
+		# A copy of the tree with nodes replaced. The block sees every node as `walk_with_slots` does,
+		# and returns it to keep it, or another node to put in its place - which is not descended into.
+		# Nodes on the way to a replacement are copied, everything else is shared with the original,
+		# which stays as it was. A replacement built with `.new` has no source, so print the result
+		# with `to_sql` rather than reading its `source_text`
+		def transform
+			replaced = {}.compare_by_identity
+			kept = []
+			stack = [[self, nil, nil, nil]]
+			while (node, up, prop, index = stack.pop)
+				replacement = yield node, up, prop, index
+				if replacement.equal?(node)
+					kept << node
+					node.each_child.reverse_each { |child, name, i| stack << [child, node, name, i] }
+				else
+					replaced[node] = replacement
+				end
+			end
+
+			# Parents come before their children in `kept`, so going backwards rebuilds children first
+			kept.reverse_each do |node|
+				changes = {}
+				node.each_child do |child, name, i|
+					next unless replaced.key?(child)
+
+					changes[name] ||= node.instance_variable_get(:"@#{name}").dup if i
+					i ? changes[name][i] = replaced[child] : changes[name] = replaced[child]
+				end
+				replaced[node] = node.with_props(changes) unless changes.empty?
+			end
+			replaced.fetch(self, self)
+		end
+
+		# A copy with some props set to new values, checked against their types
+		def with_props(changes)
+			copy = dup
+			changes.each do |name, value|
+				property = self.class.literal_properties[name]
+				raise TypeError, "#{self.class.name}##{name} cannot be #{value.inspect}" unless property.type === value
+
+				copy.instance_variable_set(:"@#{name}", value)
+			end
+			copy
 		end
 
 		def each_node(&block)

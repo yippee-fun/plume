@@ -197,6 +197,16 @@ stmt.to_sql
 # => "SELECT a FROM t WHERE (b = 1) AND (tenant_id = ?)"
 ```
 
+`walk` yields every node with its parent, and `walk_with_slots` also gives the prop the node sits in, plus its index when that prop is a list. `transform` builds a changed copy and leaves the original alone. Return a node from the block to keep it, or another node to put in its place:
+
+```ruby
+stmt = Plume.parse("SELECT a FROM t WHERE b IN (1, 2) ORDER BY 1").first
+stmt.transform { |node, parent| Plume::LiteralExpression === node && !(Plume::OrderingTerm === parent) ? Plume::Variable.new(name: "?") : node }.to_sql
+# => "SELECT a FROM t WHERE b IN (?, ?) ORDER BY 1"
+```
+
+Only the nodes on the way to a replacement are copied, and the rest is shared with the original. Neither method recurses, so trees as deep as SQLite allows are fine. This works on shareable trees as well.
+
 Tokenize SQL with `Plume.tokenize`:
 
 ```ruby
