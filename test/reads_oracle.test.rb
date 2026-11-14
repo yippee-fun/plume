@@ -41,5 +41,6 @@ cases.each do |seed, i, sql, expected|
 		assert_equal writes.tables(:insert), expected.inserted
 		assert_equal writes.updated, expected.updated
 		assert_equal writes.deleted, expected.deleted
+		assert_equal reads.calls, expected.calls
 	end
 end
