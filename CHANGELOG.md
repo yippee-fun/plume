@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- `Plume::Policy` declares the tables and columns an untrusted SELECT may read, with a row scope per table, and `Policy#scope` rewrites the SELECT so every declared table becomes a subquery of just those rows and columns. Anything not declared raises `Plume::Policy::Denied`
+
 ## [0.3.0] - 2026-11-14
 
 - `Plume::SyntaxError` carries `location`, `position`, `token`, `line` and `expected`, so tools can point at the error without reading the message
