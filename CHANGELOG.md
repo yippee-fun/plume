@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14
+
 - `Plume::SyntaxError` carries `location`, `position`, `token`, `line` and `expected`, so tools can point at the error without reading the message
 - Comments lex as `:COMMENT` rather than `:SPACE`; `Plume.comments` lists them with their byte ranges, `Comment#tags` reads sqlcommenter and Rails query_log_tags comments, and `to_sql(comments: true)` keeps the comments before and after a statement
 - `Plume.tokenize(sql, with_positions: true)` gives each token's byte range
