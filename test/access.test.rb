@@ -186,3 +186,20 @@ test "summary takes what was already parsed" do
 	assert_equal Plume.summary(Plume.parse("SELECT 1; SELECT 2")).statement_types, ["SelectStatement", "SelectStatement"]
 	assert_equal Plume.summary("").statement_types, []
 end
+
+# -- triggers
+
+test "a trigger reads the table it is on through NEW and OLD, and writes what its body writes" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a, b); CREATE TABLE log (x, y)")
+	access = Plume.access("CREATE TRIGGER tr AFTER UPDATE ON t WHEN new.a <> old.a BEGIN INSERT INTO log VALUES (new.a, lower(old.b)); END", catalog:)
+
+	assert_equal sorted(access.reads.columns), { "t" => ["a", "b"] }
+	assert_equal [access.writes.tables(:insert), access.reads.calls], [Set["log"], Set["lower"]]
+end
+
+test "a trigger on INSERT has no OLD row, and one on DELETE no NEW row" do
+	unresolved = -> (sql) { Plume.access(sql, strict: false).unresolved.map(&:name) }
+
+	assert_equal unresolved.("CREATE TRIGGER tr BEFORE INSERT ON t BEGIN SELECT old.a, new.a; END"), ["old.a"]
+	assert_equal unresolved.("CREATE TRIGGER tr BEFORE DELETE ON t BEGIN SELECT old.a, new.a; END"), ["new.a"]
+end

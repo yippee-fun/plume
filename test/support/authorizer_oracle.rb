@@ -20,9 +20,9 @@ class AuthorizerOracle
 		@db.execute_batch(schema_sql)
 		@catalog = Plume::Catalog.from_sqlite(@db)
 		@events = []
-		@db.authorizer = proc do |action, table, column, *|
+		@db.authorizer = proc do |action, table, column, _schema, trigger|
 			# The names come as bytes, and are UTF-8 since the schema was. A function's name comes second
-			@events << [action, table&.dup&.force_encoding(Encoding::UTF_8), column&.dup&.force_encoding(Encoding::UTF_8)]
+			@events << [action, table&.dup&.force_encoding(Encoding::UTF_8), column&.dup&.force_encoding(Encoding::UTF_8), trigger]
 			0
 		end
 	end
@@ -31,9 +31,12 @@ class AuthorizerOracle
 
 	# Only base tables count - views and eponymous virtual tables like json_each
 	# show up in the callback too, but Plume reports those separately
-	def reads(sql)
+	# With `trigger:`, only what that trigger does when `sql` fires it. SQLite names the innermost
+	# trigger _or view_ behind each access, so without one everything counts
+	def reads(sql, trigger: nil)
 		@events.clear
 		@db.prepare(sql).close
+		@events.select! { |*, name| name == trigger } if trigger
 		# SQLite folds the case of ASCII letters only
 		known = @catalog.tables.to_h { |t| [t.name.downcase(:ascii), t.name] }
 
@@ -42,9 +45,9 @@ class AuthorizerOracle
 		inserted = Set.new
 		updated = Hash.new { |h, k| h[k] = Set.new }
 		deleted = Set.new
-		calls = @events.filter_map { |action, _, name| name if action == SQLITE_FUNCTION }.to_set
+		calls = @events.filter_map { |action, _, name, _| name if action == SQLITE_FUNCTION }.to_set
 		# For INSERT and DELETE the table comes as the first argument, the second is the schema
-		@events.each do |action, table, column|
+		@events.each do |action, table, column, _trigger|
 			next unless table && (name = known[table.downcase(:ascii)])
 
 			case action
