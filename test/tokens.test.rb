@@ -7,10 +7,10 @@ SPACE_TOKENS = [
 	["\f", :SPACE],
 	["\r", :SPACE],
 	[" \t\n\f\r", :SPACE],
-	["--", :SPACE],
-	["-- inline comment", :SPACE],
-	["/* single line comment */", :SPACE],
-	["/* multi-line\ncomment */", :SPACE],
+	["--", :COMMENT],
+	["-- inline comment", :COMMENT],
+	["/* single line comment */", :COMMENT],
+	["/* multi-line\ncomment */", :COMMENT],
 	["\xEF\xBB\xBF", :SPACE],
 	["\x09", :SPACE],
 	["\x0A", :SPACE],
@@ -210,8 +210,8 @@ WEIRD_STRINGS = [
 	["1_000.123/", [:QNUMBER, :SLASH]],
 	["1_000/", [:QNUMBER, :SLASH]],
 	["1_000E+2/", [:QNUMBER, :SLASH]],
-	["2 /* ", [:INTEGER, :SPACE, :SPACE]],
-	["2 /*", [:INTEGER, :SPACE, :SPACE]],
+	["2 /* ", [:INTEGER, :SPACE, :COMMENT]],
+	["2 /*", [:INTEGER, :SPACE, :COMMENT]],
 ].freeze
 
 KEYWORDS = Plume::Lexer::KEYWORDS.to_a
@@ -263,9 +263,9 @@ end
 
 # tokens with values
 
-test "tokenizes 2 /*  as INTEGER, SPACE, SPACE" do
+test "tokenizes 2 /*  as INTEGER, SPACE, COMMENT" do
 	tokens = lex "2 /* ", with_values: true
-	assert_equal [[:INTEGER, "2"], [:SPACE, " "], [:SPACE, "/* "]], tokens
+	assert_equal [[:INTEGER, "2"], [:SPACE, " "], [:COMMENT, "/* "]], tokens
 end
 
 # UTF16 strings
@@ -299,5 +299,5 @@ test "tokens come with their byte ranges, multibyte characters and skipped comme
 end
 
 test "the spaces a tokenizer keeps have byte ranges too" do
-	assert_equal Plume.tokenize("a -- c\nb", with_positions: true, skip_spaces: false), [[:ID, 0, 1], [:SPACE, 1, 2], [:SPACE, 2, 6], [:SPACE, 6, 7], [:ID, 7, 8]]
+	assert_equal Plume.tokenize("a -- c\nb", with_positions: true, skip_spaces: false), [[:ID, 0, 1], [:SPACE, 1, 2], [:COMMENT, 2, 6], [:SPACE, 6, 7], [:ID, 7, 8]]
 end
