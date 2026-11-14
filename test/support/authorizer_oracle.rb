@@ -37,6 +37,14 @@ class AuthorizerOracle
 
 	def close = @db.close
 
+	# What `sql` does, and then does it - so the next statement sees the schema it left
+	def run(sql)
+		result = reads(sql)
+		@db.execute_batch(sql)
+		@catalog = Plume::Catalog.from_sqlite(@db)
+		result
+	end
+
 	# Only base tables count - views and eponymous virtual tables like json_each
 	# show up in the callback too, but Plume reports those separately
 	# With `trigger:`, only what that trigger does when `sql` fires it. SQLite names the innermost

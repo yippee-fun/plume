@@ -228,3 +228,11 @@ test "CREATE TABLE … AS and CREATE INDEX read, DROP TABLE deletes" do
 	assert_equal Plume.writes("DROP TABLE t", catalog:).deleted, Set["t"]
 	assert_equal Plume.reads("CREATE VIEW v AS SELECT a FROM t", catalog:).tables, Set[]
 end
+
+test "summary leaves the catalog it was given alone" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a)")
+	summary = Plume.summary("ALTER TABLE t ADD COLUMN b; SELECT b FROM t; DROP TABLE t", catalog:)
+
+	assert_equal summary.resolved?, true
+	assert_equal catalog.table("t").columns, ["a"]
+end

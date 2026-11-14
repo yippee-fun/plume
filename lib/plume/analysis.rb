@@ -187,11 +187,16 @@ module Plume
 		end
 
 		# Reads and writes for any number of statements, a migration or a whole log line - with the
-		# same arguments as `access`. Each statement is analyzed against the catalog as given, without
-		# the tables the statements before it create
+		# same arguments as `access`. Each statement sees the schema as the statements before it left
+		# it: a copy of the catalog is changed as they create, alter and drop things, and the catalog
+		# passed in stays as it was
 		def self.summary(sql, catalog: nil, strict: true)
 			statements = statements(sql)
-			Summary.new(statements, statements.map { |statement| access(statement, catalog:, strict:) })
+			catalog = catalog&.dup
+			accesses = statements.map do |statement|
+				access(statement, catalog:, strict:).tap { catalog&.apply(statement) }
+			end
+			Summary.new(statements, accesses)
 		end
 
 		def self.statements(sql)
