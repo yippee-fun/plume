@@ -10,6 +10,7 @@
 - `Node#dump` and `Plume.load`: a tree to a plain hash that JSON can carry and back, exactly - positions, keywords as written and source included
 - `Plume.truncate(sql, max_length)`: SQL shortened by putting `...` in place of result columns, conditions, VALUES rows, CTE bodies, INSERT columns and UPDATE assignments, the most deeply nested first, and cut off only when that is not enough
 - `Plume.split`: the statements in a script, found by their tokens alone so SQL that does not parse splits too, with byte ranges on request
+- Fixed: analyzing schema changes compared names with Unicode case folding, and on JRuby raised for a name or type that is not valid UTF-8; names now compare as SQLite compares them, A-Z only
 - Fixed: splitting a schema ended a trigger's body at the END of a CASE inside it, and took a table named `trigger` for a trigger, so a later BEGIN swallowed the statements after it
 - `to_sql(pretty: true)` lays SQL out over lines - a clause per line, long lists and AND/OR chains an item per line, subqueries indented - with `indent_size:`, `max_line_length:` and `commas_start_of_line:`
 - `Plume.summary` analyzes each statement against the schema the statements before it left, on a copy of the catalog; `Catalog#apply` makes those changes - CREATE, DROP (with a table's indexes and triggers) and ALTER TABLE renames, added and dropped columns

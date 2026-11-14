@@ -28,6 +28,10 @@ module Plume
 
 		def self.from_sql(sql) = new.load_sql(sql)
 
+		# Whether two names are one to SQLite, which folds the case of A-Z only. Compared as bytes, so a
+		# name that is not valid UTF-8 compares too - JRuby's casecmp? raises for one
+		def self.same_name?(a, b) = !a.nil? && !b.nil? && a.to_s.b.casecmp?(b.to_s.b)
+
 		# The indexes SQLite makes for a table's UNIQUE and PRIMARY KEY constraints, in the order it
 		# makes them - all but the rowid's own primary key, even where two cover the same columns
 		def self.autoindexes(statement)
@@ -152,14 +156,14 @@ module Plume
 
 			# A table takes its indexes and triggers with it, a view its triggers
 			[@indexes, @triggers].each do |dependents|
-				dependents.delete_if { |_, d| d.schema.casecmp?(object.schema) && d.table.casecmp?(object.name) }
+				dependents.delete_if { |_, d| Catalog.same_name?(d.schema, object.schema) && Catalog.same_name?(d.table, object.name) }
 			end
 		end
 
 		def alter(statement)
 			table = table(statement.table.table, schema: statement.table.schema) or return
 			columns = table.columns
-			rename = -> (list, from, to) { list&.map { |c| c.casecmp?(from) ? to : c } }
+			rename = -> (list, from, to) { list&.map { |c| Catalog.same_name?(c, from) ? to : c } }
 
 			changed =
 				case statement.action
@@ -172,10 +176,10 @@ module Plume
 					from, to = statement.column, statement.new_name
 					table.with(
 						columns: rename.(columns, from, to)&.freeze, generated_columns: rename.(table.generated_columns, from, to).freeze,
-						rowid_alias: table.rowid_alias&.casecmp?(from) ? to : table.rowid_alias,
+						rowid_alias: Catalog.same_name?(table.rowid_alias, from) ? to : table.rowid_alias,
 					)
 				when :DROP_COLUMN
-					gone = -> (list) { list&.reject { |c| c.casecmp?(statement.column) }&.freeze }
+					gone = -> (list) { list&.reject { |c| Catalog.same_name?(c, statement.column) }&.freeze }
 					table.with(columns: gone.(columns), generated_columns: gone.(table.generated_columns))
 				else return
 				end
@@ -186,7 +190,7 @@ module Plume
 			@tables.delete(key(table.schema, table.name))
 			@tables[key(table.schema, new_name)] = table.with(name: new_name)
 			old_prefix = "sqlite_autoindex_#{table.name}_"
-			@indexes.transform_values! { |i| (i.schema.casecmp?(table.schema) && i.table.casecmp?(table.name)) ? i.with(table: new_name) : i }
+			@indexes.transform_values! { |i| (Catalog.same_name?(i.schema, table.schema) && Catalog.same_name?(i.table, table.name)) ? i.with(table: new_name) : i }
 			@indexes.keys.each do |k|
 				index = @indexes[k]
 				next unless index.name.start_with?(old_prefix) && index.table == new_name
@@ -195,7 +199,7 @@ module Plume
 				renamed = index.with(name: index.name.sub(old_prefix, "sqlite_autoindex_#{new_name}_"))
 				@indexes[key(renamed.schema, renamed.name)] = renamed
 			end
-			@triggers.transform_values! { |t| (t.schema.casecmp?(table.schema) && t.table.casecmp?(table.name)) ? t.with(table: new_name) : t }
+			@triggers.transform_values! { |t| (Catalog.same_name?(t.schema, table.schema) && Catalog.same_name?(t.table, table.name)) ? t.with(table: new_name) : t }
 		end
 
 		def key(schema, name) = [schema.to_s.downcase(:ascii), name.to_s.downcase(:ascii)].freeze
@@ -247,7 +251,7 @@ module Plume
 				end
 			end
 
-			candidate.name if candidate&.type&.text&.casecmp?("INTEGER")
+			candidate.name if Catalog.same_name?(candidate&.type&.text, "INTEGER")
 		end
 
 		def add_sqlite_table(db, schema, name, sql)
@@ -258,7 +262,7 @@ module Plume
 			generated = info.select { |row| row[6] == 2 || row[6] == 3 }.map { |row| row[1] }
 			without_rowid = sql.to_s.match?(/\bWITHOUT\s+ROWID\s*;?\s*\z/i)
 			pk_rows = info.select { |row| row[5].to_i > 0 }
-			rowid_alias = pk_rows[0][1] if !without_rowid && pk_rows.size == 1 && pk_rows[0][2].to_s.casecmp?("INTEGER")
+			rowid_alias = pk_rows[0][1] if !without_rowid && pk_rows.size == 1 && Catalog.same_name?(pk_rows[0][2].to_s, "INTEGER")
 
 			statement = Parser.new(sql).parse.first
 			module_name = statement.module_name if CreateVirtualTableStatement === statement
