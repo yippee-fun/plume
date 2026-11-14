@@ -124,7 +124,19 @@ module Plume
 	autoload :WindowDefinition, "plume/ast/window_definition"
 	autoload :WithClause, "plume/ast/with_clause"
 
-	SyntaxError = Class.new(StandardError)
+	# Where parsing gave up, for editors and linters that want more than the message:
+	# `location` is the byte range `[beg, fin]` of the offending token, as `Node#location` gives it,
+	# `token` its type (nil at the end of input), `line` counts from 1
+	class SyntaxError < StandardError
+		attr_reader :location, :token, :line, :expected
+
+		def initialize(message = nil, location: nil, token: nil, line: nil, expected: [])
+			@location, @token, @line, @expected = location, token, line, expected
+			super(message)
+		end
+
+		def position = location&.first
+	end
 
 	# What running out of stack raises. JRuby lets a Java StackOverflowError through
 	# when the stack runs out inside its own Java code rather than in Ruby
