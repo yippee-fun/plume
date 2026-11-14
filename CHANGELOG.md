@@ -5,6 +5,7 @@
 - `Plume.parameters`: a statement's bind parameters, numbered and named as SQLite numbers and names them
 - `Node#walk_with_slots` yields each node's prop and index under its parent, `Node#each_child` the same for direct children, and `Node#transform` returns a copy of the tree with nodes replaced
 - `Node#dump` and `Plume.load`: a tree to a plain hash that JSON can carry and back, exactly - positions, keywords as written and source included
+- `Plume.truncate(sql, max_length)`: SQL shortened by putting `...` in place of result columns, conditions, VALUES rows, CTE bodies, INSERT columns and UPDATE assignments, the most deeply nested first, and cut off only when that is not enough
 - `Plume.writes`: which tables and columns an INSERT, UPDATE or DELETE would write - the same `Writes` that `Plume.access` returns, without the reads
 - `Plume::Catalog::Table#generated_columns`, read from CREATE TABLE and from a live database
 - `Plume.eager_load!` makes Plume usable from Ractors: parsing, printing and analysis run in any Ractor, and catalogs and parsed trees can be made shareable
