@@ -148,11 +148,17 @@ module Plume
 			[SystemStackError].freeze
 		end
 
-	def self.tokenize(str, with_values: false, skip_spaces: true)
+	# `with_positions` adds each token's byte range `beg, fin`, after the value if there is one
+	def self.tokenize(str, with_values: false, with_positions: false, skip_spaces: true)
 		lex = Lexer.new(str, skip_spaces: skip_spaces)
 		[].tap do |tokens|
 			while (token = lex.next_token)
-				tokens << (with_values ? [token, lex.value] : token)
+				tokens <<
+					if with_positions
+						with_values ? [token, lex.value, lex.anchor, lex.cursor] : [token, lex.anchor, lex.cursor]
+					else
+						with_values ? [token, lex.value] : token
+					end
 			end
 		end
 	end

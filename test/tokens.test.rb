@@ -290,3 +290,14 @@ end
 test "a NUL right after a keyword's first letter is an illegal token" do
 	assert_equal lex("a\0b", with_values: true), [[:ID, "a"], [:ILLEGAL, "\0"], [:ID, "b"]]
 end
+
+test "tokens come with their byte ranges, multibyte characters and skipped comments counted" do
+	sql = "SELECT 'é', a -- hi\nFROM t"
+
+	assert_equal Plume.tokenize(sql, with_positions: true), [[:SELECT, 0, 6], [:STRING, 7, 11], [:COMMA, 11, 12], [:ID, 13, 14], [:FROM, 21, 25], [:ID, 26, 27]]
+	assert_equal Plume.tokenize(sql, with_values: true, with_positions: true).map { |_, value, beg, fin| sql.byteslice(beg, fin - beg) == value }.uniq, [true]
+end
+
+test "the spaces a tokenizer keeps have byte ranges too" do
+	assert_equal Plume.tokenize("a -- c\nb", with_positions: true, skip_spaces: false), [[:ID, 0, 1], [:SPACE, 1, 2], [:SPACE, 2, 6], [:SPACE, 6, 7], [:ID, 7, 8]]
+end
