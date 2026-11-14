@@ -405,6 +405,26 @@ A value copied into a column being written counts as projected, just like one re
 
 Writes are checked against the authorizer as well, and must match it exactly - except for the columns of an `INSERT`, which the authorizer does not name.
 
+### What does a whole script touch?
+
+`reads`, `writes` and `access` each take exactly one statement. `Plume.summary` takes any number of statements, such as a migration or a batch from a log, and merges what they touch:
+
+```ruby
+summary = Plume.summary(<<~SQL)
+  CREATE TABLE archive (id INTEGER PRIMARY KEY, title TEXT);
+  INSERT INTO archive SELECT id, upper(title) FROM posts WHERE id < 100;
+  DELETE FROM posts WHERE id < 100;
+SQL
+
+summary.statement_types  # => ["CreateTableStatement", "InsertStatement", "DeleteStatement"]
+summary.tables           # => #<Set: {"posts", "archive"}>
+summary.tables(:delete)  # => #<Set: {"posts"}>
+summary.calls            # => #<Set: {"upper"}>
+summary.accesses         # => [nil, #<data Plume::Analysis::Access ...>, #<data Plume::Analysis::Access ...>]
+```
+
+It takes the same `catalog:` and `strict:` arguments. Statements other than `SELECT`, `INSERT`, `UPDATE` and `DELETE` are listed but not analyzed, so their entry in `accesses` is `nil`.
+
 ### Ractors
 
 Plume loads its parts lazily, and Ractors other than the main one cannot read the class-level state that leaves behind. Call `Plume.eager_load!` once from the main Ractor before starting any, and freeze the catalog with `Ractor.make_shareable` so it can be passed in:

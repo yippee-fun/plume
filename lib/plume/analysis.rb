@@ -103,6 +103,40 @@ module Plume
 			def deleted = tables(:delete)
 		end
 
+		# What a run of statements reads and writes, as `Plume.summary` gives it. `accesses` has one
+		# entry per statement, nil for a statement that is not analyzed; the rest is merged across them
+		class Summary
+			attr_reader :statements, :accesses
+
+			def initialize(statements, accesses)
+				@statements = statements
+				@accesses = accesses
+			end
+
+			# Each statement's node class, like "SelectStatement" or "CreateTableStatement"
+			def statement_types = @statements.map { |s| s.class.name.delete_prefix("Plume::") }
+
+			# Every base table read or written, or only those touched in one way: `:projected`,
+			# `:referenced`, `:insert`, `:update` or `:delete`
+			def tables(usage = nil) = each_side.reduce(Set.new) { |all, refs| all | refs.tables(usage) }
+
+			def reads = analyzed.map(&:reads)
+			def writes = analyzed.map(&:writes)
+			def views = union(reads, :views)
+			def functions = union(reads, :functions)
+			def calls = union(reads, :calls)
+			def ctes = union(reads, :ctes)
+			def aliases = reads.reduce({}) { |all, r| all.merge(r.aliases) }
+			def unresolved = reads.flat_map(&:unresolved)
+			def resolved? = unresolved.empty?
+
+			private
+
+			def analyzed = @accesses.compact
+			def each_side = reads + writes
+			def union(list, name) = list.reduce(Set.new) { |all, r| all | r.public_send(name) }
+		end
+
 		Access = Data.define(:reads, :writes) do
 			def unresolved = reads.unresolved
 			def resolved? = reads.resolved?
@@ -128,12 +162,7 @@ module Plume
 
 		# Like `reads`, but also reports what an INSERT, UPDATE or DELETE writes
 		def self.access(sql, catalog: nil, strict: true)
-			statements =
-				case sql
-				when Node then [sql]
-				when Array then sql
-				else Parser.new(sql).parse
-				end
+			statements = statements(sql)
 			raise Error, "expected exactly one statement, got #{statements.size}" unless statements.size == 1
 
 			statement = statements.first
@@ -151,5 +180,26 @@ module Plume
 
 			access
 		end
+
+		# Reads and writes for any number of statements, a migration or a whole log line - with the
+		# same arguments as `access`. Statements other than SELECT, INSERT, UPDATE and DELETE are
+		# listed in `statement_types` but not analyzed. Each statement is analyzed against the catalog
+		# as given, without the tables the statements before it create
+		def self.summary(sql, catalog: nil, strict: true)
+			statements = statements(sql)
+			accesses = statements.map do |statement|
+				access(statement, catalog:, strict:) if Resolver::STATEMENTS.any? { |klass| klass === statement }
+			end
+			Summary.new(statements, accesses)
+		end
+
+		def self.statements(sql)
+			case sql
+			when Node then [sql]
+			when Array then sql
+			else Parser.new(sql).parse
+			end
+		end
+		private_class_method :statements
 	end
 end
