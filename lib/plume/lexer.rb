@@ -316,7 +316,7 @@ module Plume
 		def next_token
 			@anchor = @cursor
 			token = lex_next_token
-			return next_token if token == :SPACE && @skip_spaces
+			return next_token if (token == :SPACE || token == :COMMENT) && @skip_spaces
 			token
 		end
 
@@ -352,7 +352,7 @@ module Plume
 					step
 					step until (b = peek).nil? || b == 10 # "\n"
 
-					:SPACE # IMP: R-22934-2513
+					:COMMENT # which SQLite takes for a space [IMP: R-22934-2513]
 				elsif peek == 62 # ">"
 					# differentiate between different pointers
 					if peek(1) == 62 # ">"
@@ -373,7 +373,7 @@ module Plume
 				step until (b = peek).nil? || (b == 42 && peek(1) == 47) # consume until EOF or "*/"
 				step(2) if peek == 42 && peek(1) == 47 # consume the "*/"
 
-				:SPACE # comments are encoded as SPACE tokens [IMP: R-22934-2513]
+				:COMMENT # which SQLite takes for a space [IMP: R-22934-2513]
 			when :EQ
 				step if peek == 61 # "="
 				:EQ

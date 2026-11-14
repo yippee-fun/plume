@@ -200,8 +200,19 @@ module Plume
 		end
 
 		# `pretty: true` lays the SQL out over lines, see PrettyPrinter for `indent_size:`, `max_line_length:`
-		# and `commas_start_of_line:`
-		def to_sql(pretty: false, **layout) = pretty ? PrettyPrinter.print(self, **layout) : Printer.print(self)
+		# and `commas_start_of_line:`. With `comments: true`, the comments right before and after the node
+		# in its source come along - a header above a statement, or the sqlcommenter tags after it. Those
+		# inside it are left out. A `--` comment after it becomes a `/* */` one, so a semicolon after it is
+		# not swallowed
+		def to_sql(pretty: false, comments: false, **layout)
+			sql = pretty ? PrettyPrinter.print(self, **layout) : Printer.print(self)
+			return sql unless comments
+
+			before, after = Comments.around(self)
+			lead = before.map { |c| c.text + (c.block? ? " " : "\n") }.join
+			tail = after.map { |c| " #{((c.block? || c.body.include?("*/")) ? c.text : "/*#{c.body} */")}" }.join
+			lead + sql + tail
+		end
 
 		# A plain hash of the whole tree that JSON can carry, which `Plume.load` turns back into it
 		def dump = Dump.dump(self)

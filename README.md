@@ -250,6 +250,25 @@ Plume.load(JSON.parse(json)).to_sql
 Neither `dump` nor `load` recurses, but JSON's own generator and parser do, so a very deep tree needs `max_nesting: false` and enough stack.
 
 The lexer knows _183_ token types: _153_ keywords, and _30_ more for punctuation, operators, literals and names. Words like `rowid`, `strict` and `stored`, which SQLite reads as plain names and checks by their text, are keywords here that fall back to names wherever SQLite would take a name.
+The lexer knows _184_ token types: _153_ keywords, and _31_ more for punctuation, operators, literals, names and comments. Words like `rowid`, `strict` and `stored`, which SQLite reads as plain names and checks by their text, are keywords here that fall back to names wherever SQLite would take a name.
+
+### Comments
+
+Comments are tokens of their own (`:COMMENT`), which the parser skips the same way SQLite does. `Plume.comments` lists them with their byte ranges. `tags` reads [sqlcommenter](https://google.github.io/sqlcommenter/) comments, including the ones Rails' `query_log_tags` adds, in its current format and the older `key:value` one:
+
+```ruby
+sql = "SELECT * FROM posts /*controller='posts',action='index'*/"
+Plume.comments(sql).first.tags # => {"controller" => "posts", "action" => "index"}
+```
+
+`to_sql(comments: true)` keeps the comments directly before and after a statement, such as a header line or the sqlcommenter tags. Comments inside the statement are left out. A trailing `--` comment is printed as `/* */`, so a semicolon after it doesn't become part of the comment:
+
+```ruby
+Plume.parse("-- report
+select a from t /*app='shop'*/").first.to_sql(comments: true)
+# => "-- report
+SELECT a FROM t /*app='shop'*/"
+```
 
 `Plume.parameters` numbers a statement's bind parameters the way SQLite does - `?` takes the next number, `?N` takes N, and a name keeps the number it first got - so you know what to bind where before preparing anything:
 

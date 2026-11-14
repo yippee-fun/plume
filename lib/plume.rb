@@ -24,6 +24,8 @@ module Plume
 	autoload :Parameters, "plume/parameters"
 	autoload :Dump, "plume/dump"
 	autoload :Truncate, "plume/truncate"
+	autoload :Comment, "plume/comment"
+	autoload :Comments, "plume/comment"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
@@ -231,6 +233,9 @@ module Plume
 			with_positions ? [text, b, f] : text
 		end
 	end
+
+	# Every comment in `sql`, in order
+	def self.comments(sql) = Comments.in(sql)
 
 	def self.parse(sql)
 		Parser.new(sql).parse
