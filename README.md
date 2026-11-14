@@ -292,6 +292,17 @@ Plume.truncate(sql, 100)
 # => "WITH recent AS (...) SELECT ... FROM recent r JOIN users u ON u.id = r.user_id WHERE u.active"
 ```
 
+### Normalizing
+
+`Plume.normalize` replaces a query's constants with `?` and leaves everything else as written, so the same query with different values comes out the same. That lets you group a log the way `pg_stat_statements` does, or keep values out of it:
+
+```ruby
+Plume.normalize("SELECT * FROM posts /* app */ WHERE user_id = 42 AND title LIKE 'Re: %' ORDER BY 1 LIMIT 10")
+# => "SELECT * FROM posts /* app */ WHERE user_id = ? AND title LIKE ? ORDER BY 1 LIMIT ?"
+```
+
+Numbers (including their sign), strings and blobs are replaced. `NULL`, `TRUE`, `FALSE` and `CURRENT_*` are left alone, and so is an integer on its own in `ORDER BY` or `GROUP BY`, where SQLite reads it as a column position. Only `SELECT`, `INSERT`, `UPDATE` and `DELETE` are normalized. Pass a parsed statement to get a tree back with `Variable`s in place of the constants. The tests bind the constants back into the normalized SQL and check that SQLite returns the same rows.
+
 ### What does this query read?
 
 `Plume.reads` works out which tables and columns a statement would read, looking through aliases, joins, subqueries, CTEs and views:

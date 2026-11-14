@@ -26,6 +26,7 @@ module Plume
 	autoload :Truncate, "plume/truncate"
 	autoload :Comment, "plume/comment"
 	autoload :Comments, "plume/comment"
+	autoload :Normalize, "plume/normalize"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
@@ -264,6 +265,8 @@ module Plume
 	# At most `max_length` characters of `sql`, with the least telling parts left out first,
 	# see Plume::Truncate. A parsed tree is printed first
 	def self.truncate(sql, max_length) = Truncate.call((Node === sql) ? sql.to_sql : sql, max_length)
+	# The SQL with its constants turned into `?`, see Plume::Normalize. A parsed tree gives a tree back
+	def self.normalize(sql) = (Node === sql) ? Normalize.tree(sql) : Normalize.text(sql)
 
 	def self.reads(...) = Analysis.reads(...)
 	def self.writes(...) = Analysis.writes(...)

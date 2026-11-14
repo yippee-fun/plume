@@ -4,6 +4,7 @@
 - Comments lex as `:COMMENT` rather than `:SPACE`; `Plume.comments` lists them with their byte ranges, `Comment#tags` reads sqlcommenter and Rails query_log_tags comments, and `to_sql(comments: true)` keeps the comments before and after a statement
 - `Plume.tokenize(sql, with_positions: true)` gives each token's byte range
 - `Plume.parameters`: a statement's bind parameters, numbered and named as SQLite numbers and names them
+- `Plume.normalize`: a query with its constants replaced by `?`, everything else as written - or, given a tree, a tree with `Variable`s in their place. Column positions in ORDER BY and GROUP BY are kept
 - `Node#walk_with_slots` yields each node's prop and index under its parent, `Node#each_child` the same for direct children, and `Node#transform` returns a copy of the tree with nodes replaced
 - `Node#dump` and `Plume.load`: a tree to a plain hash that JSON can carry and back, exactly - positions, keywords as written and source included
 - `Plume.truncate(sql, max_length)`: SQL shortened by putting `...` in place of result columns, conditions, VALUES rows, CTE bodies, INSERT columns and UPDATE assignments, the most deeply nested first, and cut off only when that is not enough
