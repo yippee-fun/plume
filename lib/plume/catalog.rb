@@ -84,33 +84,8 @@ module Plume
 			self
 		end
 
-		# Splits SQL into statements on top-level semicolons, keeping trigger bodies
-		# (`BEGIN …; …; END`) in one piece
-		def self.split_statements(sql)
-			lexer = Lexer.new(sql, skip_spaces: true)
-			statements = []
-			start = 0
-			recent = []
-			trigger_depth = 0
-			in_trigger = false
-
-			while (token = lexer.next_token)
-				recent = [*recent.last(2), token]
-				in_trigger = true if token == :TRIGGER && recent.include?(:CREATE)
-
-				if in_trigger && token == :BEGIN
-					trigger_depth += 1
-				elsif in_trigger && token == :END && trigger_depth > 0
-					trigger_depth -= 1
-					in_trigger = false if trigger_depth.zero?
-				elsif token == :SEMI && trigger_depth.zero?
-					statements << sql.byteslice(start, lexer.cursor - start)
-					start = lexer.cursor
-				end
-			end
-			statements << sql.byteslice(start, sql.bytesize - start)
-			statements.reject { |s| Plume.tokenize(s).reject { |t| t == :SEMI }.empty? }
-		end
+		# Splits SQL into statements, keeping trigger bodies (`BEGIN …; …; END`) in one piece
+		def self.split_statements(sql) = Plume.split(sql)
 
 		private
 
