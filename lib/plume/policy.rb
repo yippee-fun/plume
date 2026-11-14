@@ -71,13 +71,7 @@ module Plume
 			raise Denied.new("expected exactly one statement, got #{statements.size}") unless statements.size == 1
 			raise Denied.new("only SELECT is allowed, got #{stmt.class.name.delete_prefix("Plume::")}", node: stmt) unless SelectStatement === stmt
 
-			reads =
-				begin
-					Plume.reads(stmt, catalog: @catalog)
-				rescue Analysis::Error => e
-					raise Denied.new(e.message)
-				end
-			check(stmt, reads)
+			reads = check(stmt)
 
 			substitutes = {}.compare_by_identity
 			ctes = reads.ctes.to_set { |name| name.downcase(:ascii) }
@@ -93,6 +87,12 @@ module Plume
 			verify(result, substitutes, ctes)
 			result.to_sql
 		end
+
+		# The catalog as this policy lets it be seen: the declared tables, with the columns that may be read
+		def restricted_catalog = @catalog.restricted(@rules.values.to_h { |rule| [rule.table, rule.limited ? rule.columns : :all] })
+
+		# The same as CREATE TABLE statements, to show whoever writes the SQL what there is to query
+		def restricted_schema = restricted_catalog.tables.filter_map(&:to_sql).join(";\n")
 
 		private
 
@@ -137,30 +137,22 @@ module Plume
 		# A name that a CTE defines, unqualified, is the CTE and not the table
 		def shadowed?(node, ctes) = node.schema.nil? && ctes.include?(key(node.table))
 
-		def check(stmt, reads)
-			if (view = reads.views.first)
-				raise Denied.new("not allowed to read view #{view}, a view cannot be scoped\n#{excerpt(find(stmt, TableName, view))}", node: find(stmt, TableName, view))
-			end
+		# The statement is analyzed against the restricted catalog, so anything outside the policy
+		# is simply not there - and names resolve the way they will in the rewritten SQL
+		def check(stmt)
+			restricted = restricted_catalog
+			reads =
+				begin
+					Plume.reads(stmt, catalog: restricted)
+				rescue Analysis::Error => e
+					raise Denied.new([e.message, visible(stmt, restricted)].compact.join("\n"), node: e.unresolved.first&.node)
+				end
 
 			reads.functions.each do |function|
 				next if @functions.include?(function)
 
 				node = find(stmt, TableFunction, function)
 				raise Denied.new("not allowed to call #{function}\n#{excerpt(node)}", node:)
-			end
-
-			reads.references.each do |ref|
-				rule = @rules[key(ref.table_key)]
-				raise Denied.new("not allowed to read #{ref.table_key}\n#{excerpt(ref.node)}", node: ref.node) if rule.nil?
-
-				# A star is cut down to the visible columns by the substitute
-				next if ref.column.nil? || StarResultColumn === ref.node
-				next if rule.columns.any? { |c| Catalog.same_name?(c, ref.column) }
-
-				raise Denied.new(
-					"not allowed to read #{ref.table_key}.#{ref.column}\n#{excerpt(ref.node)}\nvisible columns: #{rule.columns.join(", ")}",
-					node: ref.node,
-				)
 			end
 
 			# A CTE named like a declared table next to a read of that table cannot be told apart by name
@@ -170,6 +162,12 @@ module Plume
 
 				raise Denied.new("#{ref.node.table} is both a table and a WITH name here\n#{excerpt(ref.node)}", node: ref.node)
 			end
+			reads
+		end
+
+		def visible(stmt, restricted)
+			tables = stmt.walk.filter_map { |node, _| restricted.table(node.table, schema: node.schema) if TableName === node }.uniq
+			"visible: #{tables.map { |t| "#{t.name} (#{t.columns.join(", ")})" }.join(", ")}" if tables.any?
 		end
 
 		def substitute(node, rule)

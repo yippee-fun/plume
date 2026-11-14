@@ -10,8 +10,9 @@ module Plume
 		# `columns` is nil when they cannot be known, like a CREATE TABLE … AS SELECT * from a table
 		# the catalog lacks; any column name is then taken as written. `generated_columns` are among
 		# `columns` too, since they can be read like any other, but nothing can write to them.
-		# `module_name` is set for a virtual table, like "fts5"
-		Table = Data.define(:schema, :name, :columns, :hidden_columns, :generated_columns, :rowid_alias, :without_rowid, :module_name) do
+		# `module_name` is set for a virtual table, like "fts5". `statement` is the CREATE TABLE the
+		# table came from, and is gone once an ALTER TABLE made it stale
+		Table = Data.define(:schema, :name, :columns, :hidden_columns, :generated_columns, :rowid_alias, :without_rowid, :module_name, :statement) do
 			def column(name)
 				return name.to_s unless columns
 
@@ -20,6 +21,23 @@ module Plume
 			end
 
 			def rowid? = !without_rowid
+
+			# The table with only the columns named, in the order it has them
+			def only(names)
+				raise ArgumentError, "the columns of #{name} are not known" unless columns
+
+				wanted = names.map { |n| column(n) or raise ArgumentError, "no column #{n} in #{name}" }
+				kept = columns.select { |c| wanted.include?(c) }.freeze
+				with(columns: kept, hidden_columns: [].freeze, generated_columns: (generated_columns & kept).freeze, rowid_alias: (rowid_alias if kept.include?(rowid_alias)))
+			end
+
+			# Without the statement only the names are known, which is still a table SQLite takes
+			def to_sql
+				return statement.to_sql if statement
+
+				quote = -> (identifier) { %("#{identifier.to_s.gsub('"', '""')}") }
+				"CREATE TABLE #{quote.(name)} (#{columns.map(&quote).join(", ")})" if columns
+			end
 		end
 
 		View = Data.define(:schema, :name, :columns, :select)
@@ -57,8 +75,8 @@ module Plume
 			@triggers = {}
 		end
 
-		def add_table(name, columns, schema: "main", hidden_columns: [], generated_columns: [], rowid_alias: nil, without_rowid: false, module_name: nil)
-			table = Table.new(schema:, name:, columns: columns&.freeze, hidden_columns: hidden_columns.freeze, generated_columns: generated_columns.freeze, rowid_alias:, without_rowid:, module_name:)
+		def add_table(name, columns, schema: "main", hidden_columns: [], generated_columns: [], rowid_alias: nil, without_rowid: false, module_name: nil, statement: nil)
+			table = Table.new(schema:, name:, columns: columns&.freeze, hidden_columns: hidden_columns.freeze, generated_columns: generated_columns.freeze, rowid_alias:, without_rowid:, module_name:, statement:)
 			@tables[key(schema, name)] = table
 		end
 
@@ -78,6 +96,19 @@ module Plume
 		def view(name, schema: nil) = lookup(@views, name, schema)
 		def index(name, schema: nil) = lookup(@indexes, name, schema)
 		def trigger(name, schema: nil) = lookup(@triggers, name, schema)
+
+		# A catalog of only the tables named in `allowed`, each with all of its columns (`:all`) or only
+		# the ones listed: `catalog.restricted("users" => %w[id name], "plans" => :all)`. What SQL can
+		# see through it is what a reader held to those tables and columns could see. Views and triggers
+		# are left out, as are the constraints that would name something that is not there
+		def restricted(allowed)
+			kept = allowed.to_h do |name, columns|
+				table = table(name.to_s) or raise ArgumentError, "no table #{name} in the catalog"
+				[key(table.schema, table.name), (columns == :all) ? table : table.only(Array(columns))]
+			end
+			whole = allowed.select { |_, columns| columns == :all }.keys.map { |name| table(name.to_s) }
+			dup.restrict(kept, whole)
+		end
 
 		def tables = @tables.values
 		def views = @views.values
@@ -123,6 +154,17 @@ module Plume
 			@indexes = @indexes.dup
 			@triggers = @triggers.dup
 		end
+
+		def restrict(kept, whole)
+			@tables = kept
+			@views = {}
+			@triggers = {}
+			# An index of a table that lost columns may be on one of them
+			@indexes = @indexes.select { |_, index| whole.any? { |t| Catalog.same_name?(t.schema, index.schema) && Catalog.same_name?(t.name, index.table) } }
+			@tables.transform_values! { |table| table.statement ? table.with(statement: trimmed(table)) : table }
+			self
+		end
+		protected :restrict
 
 		def load_sqlite(db)
 			db.execute("PRAGMA database_list").each do |(_seq, schema, _file)|
@@ -171,16 +213,16 @@ module Plume
 				when :ADD_COLUMN
 					definition = statement.column_definition
 					generated = definition.constraints&.any?(GeneratedAsColumnConstraint)
-					table.with(columns: columns && [*columns, definition.name].freeze, generated_columns: generated ? [*table.generated_columns, definition.name].freeze : table.generated_columns)
+					table.with(columns: columns && [*columns, definition.name].freeze, generated_columns: generated ? [*table.generated_columns, definition.name].freeze : table.generated_columns, statement: nil)
 				when :RENAME_COLUMN
 					from, to = statement.column, statement.new_name
 					table.with(
 						columns: rename.(columns, from, to)&.freeze, generated_columns: rename.(table.generated_columns, from, to).freeze,
-						rowid_alias: Catalog.same_name?(table.rowid_alias, from) ? to : table.rowid_alias,
+						rowid_alias: Catalog.same_name?(table.rowid_alias, from) ? to : table.rowid_alias, statement: nil,
 					)
 				when :DROP_COLUMN
 					gone = -> (list) { list&.reject { |c| Catalog.same_name?(c, statement.column) }&.freeze }
-					table.with(columns: gone.(columns), generated_columns: gone.(table.generated_columns))
+					table.with(columns: gone.(columns), generated_columns: gone.(table.generated_columns), statement: nil)
 				else return
 				end
 			@tables[key(table.schema, table.name)] = changed
@@ -188,7 +230,7 @@ module Plume
 
 		def rename_table(table, new_name)
 			@tables.delete(key(table.schema, table.name))
-			@tables[key(table.schema, new_name)] = table.with(name: new_name)
+			@tables[key(table.schema, new_name)] = table.with(name: new_name, statement: nil)
 			old_prefix = "sqlite_autoindex_#{table.name}_"
 			@indexes.transform_values! { |i| (Catalog.same_name?(i.schema, table.schema) && Catalog.same_name?(i.table, table.name)) ? i.with(table: new_name) : i }
 			@indexes.keys.each do |k|
@@ -225,7 +267,7 @@ module Plume
 
 			columns = statement.columns.map(&:name)
 			generated = statement.columns.select { |c| c.constraints&.any?(GeneratedAsColumnConstraint) }.map(&:name)
-			add_table(name, columns, schema:, generated_columns: generated, rowid_alias: rowid_alias(statement), without_rowid: statement.without_row_id)
+			add_table(name, columns, schema:, generated_columns: generated, rowid_alias: rowid_alias(statement), without_rowid: statement.without_row_id, statement:)
 			Catalog.autoindexes(statement).each { |index| add_index(index, name, schema:) }
 		end
 
@@ -266,11 +308,33 @@ module Plume
 
 			statement = Parser.new(sql).parse.first
 			module_name = statement.module_name if CreateVirtualTableStatement === statement
-			add_table(name, columns, schema:, hidden_columns: hidden, generated_columns: generated, rowid_alias:, without_rowid:, module_name:)
+			add_table(name, columns, schema:, hidden_columns: hidden, generated_columns: generated, rowid_alias:, without_rowid:, module_name:, statement: (statement if CreateTableStatement === statement && !statement.select_statement))
 			# The schema has no row for a WITHOUT ROWID table's primary key, though SQLite counts it as an index
 			Catalog.autoindexes(statement).each { |index| add_index(index, name, schema:) } if CreateTableStatement === statement
 		end
 
 		def quote(identifier) = %("#{identifier.to_s.gsub('"', '""')}")
+
+		# The table's CREATE TABLE with only the columns it still has, and only the constraints that
+		# name nothing but those columns and the tables of this catalog
+		def trimmed(table)
+			statement = table.statement.dup
+			statement.columns = statement.columns.select { |c| table.columns.include?(c.name) }.map do |definition|
+				definition.dup.tap { |d| d.constraints = d.constraints&.select { |c| nameable?(c, table) } }
+			end
+			statement.constraints = statement.constraints&.select { |c| nameable?(c, table) }
+			statement
+		end
+
+		def nameable?(constraint, table)
+			has = -> (name) { table.columns.any? { |c| Catalog.same_name?(c, name) } }
+			return false unless constraint.walk.all? { |node, _| !(ColumnName === node || IndexedColumn === node) || has.(node.respond_to?(:column) ? node.column : node.name) }
+
+			clause = constraint.foreign_key_clause if constraint.respond_to?(:foreign_key_clause)
+			return true unless clause
+
+			target = table(clause.table) or return false
+			(clause.columns || []).all? { |c| target.columns&.any? { |tc| Catalog.same_name?(tc, c.name) } }
+		end
 	end
 end

@@ -20,6 +20,30 @@ POLICY_SCHEMA = <<~SQL
 	INSERT INTO secrets VALUES (1, 'tok');
 SQL
 
+HOSTILE_QUERIES = [
+	"SELECT * FROM users",
+	"SELECT u.*, p.* FROM users u, posts p",
+	"SELECT id FROM users WHERE id = 3 OR 1=1",
+	"SELECT name FROM users UNION SELECT name FROM projects",
+	"SELECT (SELECT count(*) FROM users) FROM posts",
+	"SELECT * FROM users NATURAL JOIN posts",
+	"SELECT * FROM users u JOIN posts p USING (id)",
+	"WITH x AS (SELECT * FROM users) SELECT * FROM x",
+	"SELECT * FROM (SELECT * FROM users)",
+	"SELECT count(*), max(name) FROM users GROUP BY account_id HAVING count(*) > 0",
+	"SELECT name FROM users ORDER BY id DESC LIMIT 1",
+	"SELECT * FROM main.users WHERE name IN (SELECT title FROM posts)",
+	"SELECT email FROM users",
+	"SELECT * FROM secrets",
+	"SELECT rowid, * FROM users",
+	"SELECT * FROM sqlite_master",
+	"SELECT * FROM pragma_table_info('users')",
+	"SELECT users.email FROM users",
+	"SELECT * FROM users WHERE email IS NOT NULL",
+	"SELECT json_extract(email, '$') FROM users",
+	"SELECT 1 FROM users u WHERE EXISTS (SELECT 1 FROM users v WHERE v.email = u.email)",
+].freeze
+
 class Quickdraw::Test
 	def policy_db
 		@policy_db ||= SQLite3::Database.new(":memory:").tap { |db| db.execute_batch(POLICY_SCHEMA) }
@@ -41,7 +65,7 @@ class Quickdraw::Test
 
 	def denied(sql, policy: build_policy)
 		policy.scope(sql)
-		flunk "expected #{sql} to be denied"
+		failure! { "expected #{sql} to be denied" }
 	rescue Plume::Policy::Denied => e
 		e
 	end
@@ -122,8 +146,8 @@ end
 test "a hidden column in WHERE is denied" do
 	e = denied("SELECT id FROM users WHERE email LIKE '%@two'")
 
-	assert_includes e.message, "not allowed to read users.email"
-	assert_includes e.message, "visible columns: id, name"
+	assert_includes e.message, "no such column: email" # as far as the query can tell
+	assert_includes e.message, "visible: users (id, name)"
 	assert_includes e.message, "^"
 	assert Plume::ColumnName === e.node
 end
@@ -140,7 +164,7 @@ end
 test "an undeclared table is denied" do
 	e = denied("SELECT token FROM secrets")
 
-	assert_includes e.message, "not allowed to read secrets"
+	assert_includes e.message, "no such table: secrets"
 	assert_includes e.message, "SELECT token FROM secrets"
 	assert Plume::TableName === e.node
 	denied("SELECT 1 FROM posts, secrets")
@@ -167,10 +191,10 @@ test "an allowed table-valued function passes" do
 	assert_equal scoped(%(SELECT p.id, j.value FROM posts p, json_each('[7]') j ORDER BY p.id)), [[1, 7], [2, 7]]
 end
 
-test "a view is denied" do
+test "a view is not there" do
 	e = denied("SELECT title FROM all_posts")
 
-	assert_includes e.message, "view all_posts"
+	assert_includes e.message, "no such table: all_posts"
 	assert Plume::TableName === e.node
 end
 
@@ -260,19 +284,25 @@ end
 test "a hidden column inside an aggregate in a scalar subquery is denied" do
 	e = denied("SELECT (SELECT group_concat(email) FROM users) FROM projects")
 
-	assert_includes e.message, "not allowed to read users.email"
+	assert_includes e.message, "no such column: email"
 end
 
-test "a NATURAL JOIN over a hidden column is denied" do
-	e = denied("SELECT u.* FROM users u NATURAL JOIN posts")
+test "a NATURAL JOIN only joins on the columns that may be read" do
+	rows = scoped("SELECT u.name, posts.title FROM users u NATURAL JOIN posts ORDER BY u.id")
 
-	assert_includes e.message, "not allowed to read users.account_id" # the join compares it, even if nobody selects it
+	assert_equal rows, [["ann", "a1"], ["bob", "b1"]] # on id alone, users.account_id is not there to join on
+end
+
+test "a name that is only ambiguous because of a hidden column resolves" do
+	rows = scoped("SELECT account_id, name FROM users JOIN posts ON posts.user_id = users.id ORDER BY posts.id")
+
+	assert_equal rows, [[1, "ann"], [1, "bob"]]
 end
 
 test "the rowid next to a hidden column is denied with the column" do
 	e = denied("SELECT users.rowid, account_id FROM users")
 
-	assert_includes e.message, "not allowed to read users.account_id"
+	assert_includes e.message, "no such column: account_id"
 end
 
 test "an INDEXED BY hint is dropped along with the table it was on" do
@@ -296,6 +326,38 @@ test "a column qualified with its schema does not resolve once the table is subs
 	assert_raises(SQLite3::SQLException) { policy_db.execute(sql) }
 end
 
+test "the restricted schema shows the declared tables and the columns that may be read" do
+	schema = build_policy.restricted_schema
+
+	assert_includes schema, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+	assert_includes schema, "CREATE TABLE posts (id INTEGER PRIMARY KEY, account_id INT, user_id INT, title TEXT, body TEXT)"
+	refute_includes schema, "email"
+	refute_includes schema, "secrets"
+	refute_includes schema, "all_posts"
+end
+
+test "what the policy takes is what compiles against its restricted schema" do
+	policy = build_policy
+	bare = SQLite3::Database.new(":memory:").tap { |db| db.execute_batch(policy.restricted_schema) }
+	compiles = -> (sql) do
+		bare.prepare(sql).close
+		true
+	rescue SQLite3::Exception
+		false
+	end
+
+	HOSTILE_QUERIES.each do |sql|
+		taken = begin
+			policy.scope(sql) && true
+		rescue Plume::Policy::Denied, Plume::SyntaxError
+			false
+		end
+		next if sql.match?(/pragma_table_info|sqlite_master/) # there in SQLite whatever the schema
+
+		assert_equal [sql, taken], [sql, compiles.(sql)]
+	end
+end
+
 test "no column outside the policy is read by SQLite whatever the query" do
 	allowed = { "users" => %w[id name account_id], "posts" => %w[id account_id user_id title body], "projects" => %w[id name], "missions" => %w[id name] }
 	seen = []
@@ -304,29 +366,7 @@ test "no column outside the policy is read by SQLite whatever the query" do
 		true
 	}
 
-	[
-		"SELECT * FROM users",
-		"SELECT u.*, p.* FROM users u, posts p",
-		"SELECT id FROM users WHERE id = 3 OR 1=1",
-		"SELECT name FROM users UNION SELECT name FROM projects",
-		"SELECT (SELECT count(*) FROM users) FROM posts",
-		"SELECT * FROM users NATURAL JOIN posts",
-		"SELECT * FROM users u JOIN posts p USING (id)",
-		"WITH x AS (SELECT * FROM users) SELECT * FROM x",
-		"SELECT * FROM (SELECT * FROM users)",
-		"SELECT count(*), max(name) FROM users GROUP BY account_id HAVING count(*) > 0",
-		"SELECT name FROM users ORDER BY id DESC LIMIT 1",
-		"SELECT * FROM main.users WHERE name IN (SELECT title FROM posts)",
-		"SELECT email FROM users",
-		"SELECT * FROM secrets",
-		"SELECT rowid, * FROM users",
-		"SELECT * FROM sqlite_master",
-		"SELECT * FROM pragma_table_info('users')",
-		"SELECT users.email FROM users",
-		"SELECT * FROM users WHERE email IS NOT NULL",
-		"SELECT json_extract(email, '$') FROM users",
-		"SELECT 1 FROM users u WHERE EXISTS (SELECT 1 FROM users v WHERE v.email = u.email)",
-	].each do |sql|
+	HOSTILE_QUERIES.each do |sql|
 		policy_db.execute(build_policy.scope(sql))
 	rescue Plume::Policy::Denied, Plume::SyntaxError, SQLite3::Exception
 		next # refused, which reads nothing, or SQLite itself does not run it
