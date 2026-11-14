@@ -213,6 +213,17 @@ Only the nodes on the way to a replacement are copied, and the rest is shared wi
 Plume.split("SELECT 1; CREATE TRIGGER t AFTER INSERT ON x BEGIN DELETE FROM y; END; SELEC oops")
 # => ["SELECT 1", "CREATE TRIGGER t AFTER INSERT ON x BEGIN DELETE FROM y; END", "SELEC oops"]
 ```
+`to_sql(pretty: true)` lays the SQL out over lines. Each clause starts a line. A clause too long for `max_line_length` (80 by default) puts its items one per line, indented by `indent_size` (4), and a long `AND` or `OR` chain puts each operand on its own line. Subqueries are indented inside their parentheses. `commas_start_of_line: true` puts the commas at the start of the lines:
+
+```ruby
+Plume.parse("select id, title from posts p join users u on u.id = p.user_id where u.active and p.draft = 0").first.to_sql(pretty: true)
+# => SELECT id, title
+#    FROM posts AS p
+#    JOIN users AS u ON u.id = p.user_id
+#    WHERE u.active AND (p.draft = 0)
+```
+
+Pretty SQL parses back into the same tree, which is checked across the whole fixture corpus.
 
 Tokenize SQL with `Plume.tokenize`:
 

@@ -19,6 +19,7 @@ module Plume
 	autoload :SQLiteGrammar, "plume/sqlite_grammar"
 	autoload :Catalog, "plume/catalog"
 	autoload :Printer, "plume/printer"
+	autoload :PrettyPrinter, "plume/pretty_printer"
 	autoload :Analysis, "plume/analysis"
 	autoload :Parameters, "plume/parameters"
 	autoload :Dump, "plume/dump"
