@@ -2782,7 +2782,7 @@ module Plume
 				if (between_kw = maybe :BETWEEN)
 					if (unbounded_kw = maybe :UNBOUNDED)
 						precedence = 1
-						preceding_kw = maybe :PRECEDING
+						preceding_kw = require :PRECEDING
 						starting_boundary = FrameBoundary.concrete(
 							full_source: @lexer.sql,
 							type_tk: Token::Keyword(preceding_kw),
@@ -2823,7 +2823,7 @@ module Plume
 							type_tk: Token::Keyword(current_row_kw),
 						)
 					elsif (unbounded_kw = maybe :UNBOUNDED)
-						following_kw = maybe :FOLLOWING
+						following_kw = require :FOLLOWING
 						ending_boundary = FrameBoundary.concrete(
 							full_source: @lexer.sql,
 							type_tk: Token::Keyword(following_kw),
@@ -2851,7 +2851,7 @@ module Plume
 						expected!("CURRENT ROW", "UNBOUNDED FOLLOWING", "expr")
 					end
 				elsif (unbounded_kw = maybe :UNBOUNDED)
-					preceding_kw = maybe :PRECEDING
+					preceding_kw = require :PRECEDING
 					starting_boundary = FrameBoundary.concrete(
 						full_source: @lexer.sql,
 						type_tk: Token::Keyword(preceding_kw),

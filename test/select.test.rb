@@ -413,3 +413,12 @@ test "NULLS takes only FIRST or LAST after it" do
 	assert_raises(Plume::SyntaxError) { Plume.parse("SELECT a FROM t ORDER BY a NULLS b") }
 	assert_raises(Plume::SyntaxError) { Plume.parse("SELECT a FROM t ORDER BY a DESC NULLS") }
 end
+
+# SQLite takes UNBOUNDED only as UNBOUNDED PRECEDING or UNBOUNDED FOLLOWING
+test "UNBOUNDED alone is no frame boundary" do
+	["ROWS BETWEEN 4 PRECEDING AND UNBOUNDED", "ROWS UNBOUNDED", "ROWS BETWEEN UNBOUNDED AND CURRENT ROW"].each do |frame|
+		assert_raises(Plume::SyntaxError) { Plume.parse("SELECT row_number() OVER (ORDER BY a #{frame}) FROM t") }
+	end
+	assert_equal Plume.parse("SELECT count(*) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM t").first.to_sql,
+		"SELECT count(*) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM t"
+end
