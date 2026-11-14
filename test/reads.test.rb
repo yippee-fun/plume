@@ -271,8 +271,8 @@ test "a table made from a select whose columns cannot be known takes any column"
 	assert_equal sorted(Plume.access("insert into c values (1)", catalog:).writes.inserted), { "c" => ["*"] }
 end
 
-test "only a single SELECT is analyzed" do
-	["select 1; select 2", "create table x (a)"].each do |sql|
+test "only a single statement is analyzed" do
+	["select 1; select 2", ""].each do |sql|
 		raised = begin
 			Plume.reads(sql)
 			false

@@ -103,8 +103,8 @@ module Plume
 			def deleted = tables(:delete)
 		end
 
-		# What a run of statements reads and writes, as `Plume.summary` gives it. `accesses` has one
-		# entry per statement, nil for a statement that is not analyzed; the rest is merged across them
+		# What a run of statements reads, writes and does, as `Plume.summary` gives it. `accesses` has one
+		# entry per statement, the rest is merged across them
 		class Summary
 			attr_reader :statements, :accesses
 
@@ -120,8 +120,9 @@ module Plume
 			# `:referenced`, `:insert`, `:update` or `:delete`
 			def tables(usage = nil) = each_side.reduce(Set.new) { |all, refs| all | refs.tables(usage) }
 
-			def reads = analyzed.map(&:reads)
-			def writes = analyzed.map(&:writes)
+			def reads = @accesses.map(&:reads)
+			def writes = @accesses.map(&:writes)
+			def actions = @accesses.flat_map(&:actions)
 			def views = union(reads, :views)
 			def functions = union(reads, :functions)
 			def calls = union(reads, :calls)
@@ -132,12 +133,17 @@ module Plume
 
 			private
 
-			def analyzed = @accesses.compact
 			def each_side = reads + writes
 			def union(list, name) = list.reduce(Set.new) { |all, r| all | r.public_send(name) }
 		end
 
-		Access = Data.define(:reads, :writes) do
+		# Something a statement does besides reading and writing rows, named as SQLite's authorizer
+		# names it: `action` is its action code as a symbol (`:create_table`, `:drop_temp_index`,
+		# `:alter_table`, `:pragma`, `:transaction`…), and `name`, `detail` and `schema` are the
+		# arguments the authorizer gets with it - for `:create_index`, the index, its table and the schema
+		Action = Data.define(:action, :name, :detail, :schema, :node)
+
+		Access = Data.define(:reads, :writes, :actions) do
 			def unresolved = reads.unresolved
 			def resolved? = reads.resolved?
 		end
@@ -160,17 +166,15 @@ module Plume
 		# they write elsewhere - or the rows a REPLACE deletes - are not reported.
 		def self.writes(sql, catalog: nil, strict: true) = access(sql, catalog:, strict:).writes
 
-		# Like `reads`, but also reports what an INSERT, UPDATE or DELETE writes. A CREATE TRIGGER is
-		# analyzed for what its WHEN and body do each time it fires
+		# Like `reads`, but also reports what an INSERT, UPDATE or DELETE writes, and in `actions` what
+		# any other statement does - creating, dropping and altering things, pragmas, transactions. A
+		# CREATE TRIGGER is analyzed for what its WHEN and body do each time it fires, a CREATE TABLE … AS
+		# reads what its SELECT reads, a CREATE INDEX reads what it indexes, DROP TABLE deletes the rows
 		def self.access(sql, catalog: nil, strict: true)
 			statements = statements(sql)
 			raise Error, "expected exactly one statement, got #{statements.size}" unless statements.size == 1
 
 			statement = statements.first
-			unless Resolver::STATEMENTS.any? { |klass| klass === statement }
-				raise Error, "only SELECT, INSERT, UPDATE, DELETE and CREATE TRIGGER can be analyzed, got #{statement.class.name}"
-			end
-
 			access = begin
 				Resolver.new(catalog:).analyze(statement)
 			rescue *STACK_EXHAUSTED
@@ -183,15 +187,11 @@ module Plume
 		end
 
 		# Reads and writes for any number of statements, a migration or a whole log line - with the
-		# same arguments as `access`. Statements other than SELECT, INSERT, UPDATE, DELETE and CREATE TRIGGER are
-		# listed in `statement_types` but not analyzed. Each statement is analyzed against the catalog
-		# as given, without the tables the statements before it create
+		# same arguments as `access`. Each statement is analyzed against the catalog as given, without
+		# the tables the statements before it create
 		def self.summary(sql, catalog: nil, strict: true)
 			statements = statements(sql)
-			accesses = statements.map do |statement|
-				access(statement, catalog:, strict:) if Resolver::STATEMENTS.any? { |klass| klass === statement }
-			end
-			Summary.new(statements, accesses)
+			Summary.new(statements, statements.map { |statement| access(statement, catalog:, strict:) })
 		end
 
 		def self.statements(sql)

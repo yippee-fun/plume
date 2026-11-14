@@ -12,6 +12,8 @@
 - `Plume.split`: the statements in a script, found by their tokens alone so SQL that does not parse splits too, with byte ranges on request
 - Fixed: splitting a schema ended a trigger's body at the END of a CASE inside it, and took a table named `trigger` for a trigger, so a later BEGIN swallowed the statements after it
 - `to_sql(pretty: true)` lays SQL out over lines - a clause per line, long lists and AND/OR chains an item per line, subqueries indented - with `indent_size:`, `max_line_length:` and `commas_start_of_line:`
+- `Plume.access` takes any statement, and reports in `Access#actions` what it does besides reading and writing rows, named after SQLite's authorizer action codes: creating, dropping and altering tables, views, indexes and triggers (automatic indexes included), pragmas, transactions, savepoints, ATTACH, REINDEX and ANALYZE. CREATE TABLE … AS and CREATE INDEX read, DROP TABLE deletes
+- `Plume::Catalog` keeps the indexes and triggers of a schema, with the table each is on, and virtual tables with their module
 - `Plume.access`, `reads` and `writes` take a CREATE TRIGGER, and report what its WHEN and body read, write and call each time it fires, with NEW and OLD reading the trigger's table
 - `Plume.summary`: reads and writes of any number of statements, one `Access` per statement and the tables, calls, CTEs and aliases merged, with `statement_types`
 - `Reads#ctes` and `#aliases` (shared with `Writes`): the CTE names a statement defines, and what each table alias stands for
