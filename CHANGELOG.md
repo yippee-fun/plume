@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 - `Plume::Policy` declares the tables and columns an untrusted SELECT may read, with a row scope per table, and `Policy#scope` rewrites the SELECT so every declared table becomes a subquery of just those rows and columns. Anything not declared raises `Plume::Policy::Denied`. `Policy#restricted_schema` is the CREATE TABLE text of what the policy lets be read
+- `Policy#check!(sql, binds)` changes nothing and raises unless the statement already keeps to the policy: every table with a `{column => value}` scope has to be held to that value by a condition its rows cannot get around, in SELECT, INSERT, UPDATE and DELETE alike
 - `Catalog#restricted` gives a catalog of only the tables and columns named, without views, triggers and the constraints that would name what was left out. `Catalog::Table#to_sql` prints a table's CREATE TABLE, and `Table#statement` keeps the one it came from
 
 ## [0.3.0] - 2026-11-14

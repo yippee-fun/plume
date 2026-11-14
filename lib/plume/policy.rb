@@ -28,7 +28,8 @@ module Plume
 
 		# `columns` are the visible ones, `limited` is whether that is fewer than the table has,
 		# `scope` is `[:where, sql]` or `[:select, sql]`, or nil
-		Rule = Data.define(:table, :columns, :limited, :scope) do
+		# `pin` is `[column, value]` when the scope is that one column having that one value
+		Rule = Data.define(:table, :columns, :limited, :scope, :pin) do
 			def rewritten? = limited || !scope.nil?
 		end
 
@@ -46,7 +47,7 @@ module Plume
 				table = @catalog.table(name.to_s) or raise ArgumentError, "no table #{name} in the catalog"
 				visible = (read == :all) ? table.columns : Array(read).map { |c| existing_column(table, c) }
 				limited = (table.columns - visible).any?
-				@rules[key(table.name)] = Rule.new(table: table.name, columns: visible.freeze, limited:, scope: parse_scope(scope))
+				@rules[key(table.name)] = Rule.new(table: table.name, columns: visible.freeze, limited:, scope: parse_scope(scope), pin: pin_of(table, scope))
 			end
 			self
 		end
@@ -71,7 +72,7 @@ module Plume
 			raise Denied.new("expected exactly one statement, got #{statements.size}") unless statements.size == 1
 			raise Denied.new("only SELECT is allowed, got #{stmt.class.name.delete_prefix("Plume::")}", node: stmt) unless SelectStatement === stmt
 
-			reads = check(stmt)
+			reads = resolve(stmt)
 
 			substitutes = {}.compare_by_identity
 			ctes = reads.ctes.to_set { |name| name.downcase(:ascii) }
@@ -94,7 +95,46 @@ module Plume
 		# The same as CREATE TABLE statements, to show whoever writes the SQL what there is to query
 		def restricted_schema = restricted_catalog.tables.filter_map(&:to_sql).join(";\n")
 
+		# Changes nothing and runs nothing: raises unless `sql` already keeps to the policy on its own.
+		# Every table with a `{column => value}` scope has to be held to that value where it is read or
+		# written, by a condition the rows cannot get around. `binds` are the values for the `?`s
+		def check!(sql, binds = [])
+			statements = Plume.parse(sql)
+			stmt = statements.first
+			raise Denied.new("expected exactly one statement, got #{statements.size}") unless statements.size == 1
+			return true if TRANSACTIONS.any? { |kind| kind === stmt }
+
+			unless ROWS.any? { |kind| kind === stmt }
+				raise Denied.new("only reading and writing rows is allowed, got #{stmt.class.name.delete_prefix("Plume::")}", node: stmt)
+			end
+
+			reads = resolve(stmt)
+			Pins.new(stmt, reads.ctes, bound(stmt, binds), method(:rule_for)).check!
+			true
+		end
+
 		private
+
+		TRANSACTIONS = [BeginStatement, CommitStatement, RollbackStatement, SavepointStatement, ReleaseStatement].freeze
+		ROWS = [SelectStatement, InsertStatement, UpdateStatement, DeleteStatement].freeze
+		private_constant :TRANSACTIONS, :ROWS
+
+		# Each `?` of the statement with the value it will be given
+		def bound(stmt, binds)
+			Plume.parameters(stmt).each_with_object({}.compare_by_identity) do |parameter, values|
+				values[parameter.node] = binds[parameter.number - 1] if parameter.number <= binds.size
+			end
+		end
+
+		def pin_of(table, scope)
+			return nil unless Hash === scope
+			raise ArgumentError, "a scope of one column and one value, got #{scope.inspect}" unless scope.size == 1
+
+			column, value = scope.first
+			raise ArgumentError, "a scope value is a number or a string, got #{value.inspect}" unless Integer === value || String === value
+
+			[existing_column(table, column), value].freeze
+		end
 
 		def key(name) = name.to_s.downcase(:ascii)
 
@@ -106,6 +146,10 @@ module Plume
 		def parse_scope(scope)
 			return nil if scope.nil?
 
+			if Hash === scope
+				column, value = scope.first
+				scope = "#{quote(column)} = #{(String === value) ? "'#{value.gsub("'", "''")}'" : Integer(value)}"
+			end
 			sql = scope.respond_to?(:to_sql) ? scope.to_sql : scope.to_s
 			if sql.match?(/\A\s*(select|with|values)\b/i)
 				stmts = Plume.parse(sql)
@@ -139,7 +183,7 @@ module Plume
 
 		# The statement is analyzed against the restricted catalog, so anything outside the policy
 		# is simply not there - and names resolve the way they will in the rewritten SQL
-		def check(stmt)
+		def resolve(stmt)
 			restricted = restricted_catalog
 			reads =
 				begin
@@ -198,5 +242,146 @@ module Plume
 		def excerpt(node) = Analysis.excerpt(node)
 
 		def quote(identifier) = %("#{identifier.to_s.gsub('"', '""')}")
+
+		# Whether every table that has a pin is held to it wherever the statement touches it.
+		# Only what cannot be got around counts: a top-level AND term of the WHERE, or of the ON
+		# of the join that brings the table in, saying `column = value` or `column IN (value)` -
+		# or saying the column equals the pinned column of another table that is held already.
+		# An OR, a subquery or anything else that would need thinking about does not count
+		class Pins
+			UNKNOWN = Object.new.freeze
+			Source = Struct.new(:table, :rule, :terms)
+
+			def initialize(stmt, ctes, bound, rule_for)
+				@stmt = stmt
+				@ctes = ctes.to_set { |name| name.downcase(:ascii) }
+				@bound = bound
+				@rule_for = rule_for
+			end
+
+			def check!
+				@stmt.walk do |node, _parent|
+					case node
+					when SelectCore then held!(sources(node.source), node.condition, "read")
+					when UpdateStatement
+						held!([[node.table, []], *sources(node.source)], node.condition, "updated")
+						unchanged!(node.table, node.assignments)
+					when DeleteStatement then held!([[node.table, []]], node.condition, "deleted from")
+					when InsertStatement then inserted!(node)
+					end
+				end
+			end
+
+			private
+
+			# Every table named in a FROM, each with the terms of the ON that brought it in
+			def sources(source)
+				case source
+				when TableName then [[source, []]]
+				when ParentheticalSource then sources(source.source)
+				when JoinClause
+					sources(source.left) + source.joins.flat_map do |join|
+						# What a RIGHT or FULL join keeps of this side, its ON did not filter
+						filters = JoinOnConstraint === join.constraint && %i[INNER LEFT CROSS COMMA].include?(join.operator.kind)
+						on = filters ? terms(join.constraint.expression) : []
+						sources(join.source).map { |table, own| [table, own + on] }
+					end
+				else []
+				end
+			end
+
+			def terms(expression)
+				case expression
+				when nil then []
+				when ParentheticalExpression then (Array === expression.value) ? [expression] : terms(expression.value)
+				when BinaryExpression then (expression.operator == :ALL) ? terms(expression.left) + terms(expression.right) : [expression]
+				else [expression]
+				end
+			end
+
+			def held!(tables, condition, verb)
+				where = terms(condition)
+				all = tables.map { |table, on| Source.new(table, rule(table), where + on) }
+				pinned = all.select { |s| s.rule&.pin }
+				unpinnable = all.find { |s| s.rule&.scope && !s.rule.pin }
+				raise Denied.new("#{unpinnable.rule.table} has a scope that cannot be checked, only applied", node: unpinnable.table) if unpinnable
+
+				held = {}.compare_by_identity
+				loop do
+					newly = pinned.reject { |s| held[s] }.select { |s| s.terms.any? { |term| pins?(term, s, all, held) } }
+					break if newly.empty?
+
+					newly.each { |s| held[s] = true }
+				end
+
+				loose = pinned.find { |s| !held[s] } or return
+				column, value = loose.rule.pin
+				raise Denied.new("#{loose.rule.table} is #{verb} without #{column} = #{value.inspect}\n#{Analysis.excerpt(loose.table)}", node: loose.table)
+			end
+
+			def rule(table)
+				return nil if table.schema.nil? && @ctes.include?(table.table.downcase(:ascii))
+
+				@rule_for.(table)
+			end
+
+			def pins?(term, source, all, held)
+				return false unless BinaryExpression === term
+
+				column = source.rule.pin.first
+				case term.operator
+				when :EQUALS
+					[[term.left, term.right], [term.right, term.left]].any? do |mine, other|
+						next false unless names?(mine, source, column, all)
+
+						same?(other, source) || all.any? { |o| held[o] && o.rule.pin[1] == source.rule.pin[1] && names?(other, o, o.rule.pin[0], all) }
+					end
+				when :IN
+					list = term.right.value if ParentheticalExpression === term.right
+					names?(term.left, source, column, all) && Array === list && list.any? && list.all? { |item| same?(item, source) }
+				else false
+				end
+			end
+
+			# Whether `node` is this column of this source. A bare column name only says so when there is nothing else in the FROM
+			def names?(node, source, column, all)
+				return false unless ColumnName === node && Catalog.same_name?(node.column, column)
+				return all.size == 1 if node.table.nil?
+
+				Catalog.same_name?(node.table, source.table.alias || source.table.table) && (node.schema.nil? || source.table.alias.nil?)
+			end
+
+			def same?(node, source) = value(node) == source.rule.pin[1]
+
+			def value(node)
+				case node
+				when LiteralExpression then node.value
+				when Variable then @bound.fetch(node, UNKNOWN)
+				when ParentheticalExpression then (Array === node.value) ? UNKNOWN : value(node.value)
+				else UNKNOWN
+				end
+			end
+
+			def unchanged!(table, assignments)
+				pin = rule(table)&.pin or return
+				moved = assignments.flat_map(&:columns).find { |c| Catalog.same_name?(c.column, pin[0]) } or return
+				raise Denied.new("#{pin[0]} of #{table.table} cannot be changed\n#{Analysis.excerpt(moved)}", node: moved)
+			end
+
+			def inserted!(stmt)
+				rule = rule(stmt.table) or return
+				raise Denied.new("#{rule.table} has a scope that cannot be checked, only applied", node: stmt.table) if rule.scope && !rule.pin
+
+				pin = rule.pin or return
+				column, wanted = pin
+				at = stmt.columns&.index { |c| Catalog.same_name?(c.column, column) }
+				rows = stmt.select&.body
+				ok = at && ValuesClause === rows && rows.rows.all? { |row| value(row.values[at]) == wanted }
+				raise Denied.new("#{stmt.table.table} is inserted into without #{column} = #{wanted.inspect}\n#{Analysis.excerpt(stmt.table)}", node: stmt.table) unless ok
+
+				(stmt.upserts || []).each { |upsert| unchanged!(stmt.table, upsert.assignments || []) }
+			end
+		end
+		private_constant :Pins
 	end
 end
