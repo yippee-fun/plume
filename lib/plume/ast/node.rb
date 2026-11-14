@@ -201,6 +201,9 @@ module Plume
 
 		def to_sql = Printer.print(self)
 
+		# A plain hash of the whole tree that JSON can carry, which `Plume.load` turns back into it
+		def dump = Dump.dump(self)
+
 		def source_text
 			return unless @full_source && (loc = location)
 
