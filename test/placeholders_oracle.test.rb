@@ -9,22 +9,10 @@ require_relative "support/authorizer_oracle"
 require_relative "support/placeholder_cases"
 
 class Quickdraw::Test
-	# How SQLite numbers parameters: `?` takes the next number, `?N` takes N, and a name keeps
-	# the number it first got. The count and the names, in the shape of `Statement#named_params`
-	def sqlite_numbering(names)
-		slots = {}
-		count = 0
-		names.each do |name|
-			if name == "?"
-				count += 1
-			elsif (n = name[/\A\?(\d+)\z/, 1]&.to_i)
-				slots[n] ||= name
-				count = n if n > count
-			elsif !slots.value?(name)
-				slots[count += 1] = name
-			end
-		end
-		[count, slots.sort.map(&:last).reject { |name| name.start_with?("?") }.map { |name| name[1..] }]
+	# Plume.parameters in the shape of `Statement#named_params`, which leaves out `?N` and the prefix
+	def plume_parameters(sql)
+		parameters = Plume.parameters(sql)
+		[parameters.count, parameters.names.compact.reject { |name| name.start_with?("?") }.map { |name| name[1..] }]
 	end
 
 	def sqlite_parameters(db, sql)
@@ -65,20 +53,19 @@ PlaceholderCases::SPELLINGS.each do |param|
 	test "SQLite takes #{param} as one parameter" do
 		db = SQLite3::Database.new(":memory:")
 		sql = "SELECT #{param}"
-		names = PlaceholderCases.variables(Plume.parse(sql)).map(&:name)
 
-		assert_equal sqlite_parameters(db, sql), sqlite_numbering(names)
+		assert_equal sqlite_parameters(db, sql), plume_parameters(sql)
 	ensure
 		db&.close
 	end
 end
 
-PlaceholderCases::BOUNDARIES.each do |sql, printed, names|
+PlaceholderCases::BOUNDARIES.each do |sql, printed, _names|
 	test "SQLite ends parameters where we do: #{sql.inspect}" do
 		db = placeholder_db
 
-		assert_equal sqlite_parameters(db, sql), sqlite_numbering(names)
-		assert_equal sqlite_parameters(db, printed), sqlite_numbering(names)
+		assert_equal sqlite_parameters(db, sql), plume_parameters(sql)
+		assert_equal sqlite_parameters(db, printed), plume_parameters(sql)
 		assert_equal outcome(db, printed), outcome(db, sql)
 	ensure
 		db&.close
@@ -90,7 +77,7 @@ PlaceholderCases::STATEMENTS.each do |sql, _|
 		db = placeholder_db
 		statement = Plume.parse(sql).first
 		printed = statement.to_sql
-		expected = sqlite_numbering(PlaceholderCases.variables(statement).map(&:name))
+		expected = plume_parameters(statement)
 
 		assert_equal sqlite_parameters(db, sql), expected
 		assert_equal sqlite_parameters(db, printed), expected
@@ -148,8 +135,7 @@ fuzz_cases.uniq.each do |sql, sqlite|
 		if sqlite == :malformed
 			assert_raises(Plume::SyntaxError) { Plume.parse(sql) }
 		else
-			names = PlaceholderCases.variables(Plume.parse(sql)).map(&:name)
-			assert_equal sqlite_numbering(names)[0], sqlite if Integer === sqlite
+			assert_equal Plume.parameters(sql).count, sqlite if Integer === sqlite
 		end
 	end
 end
