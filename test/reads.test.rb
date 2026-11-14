@@ -217,6 +217,21 @@ test "calls lists every function called, by operators and keywords too, and in v
 	assert_equal reads("select j.value from json_each('[]') j").calls.to_a, []
 end
 
+test "ctes and aliases are spelled as written, and shared with the writes" do
+	access = Plume.access("WITH r AS (SELECT * FROM posts), unused AS (SELECT 1) UPDATE main.users AS u SET name = x.title FROM r AS x, aux.t y, json_each(?) j WHERE u.id = x.id", strict: false)
+
+	assert_equal access.reads.ctes.to_a, ["r", "unused"]
+	assert_equal access.reads.aliases, { "u" => "users", "x" => "r", "y" => "aux.t", "j" => "json_each" }
+	assert_equal access.writes.aliases, access.reads.aliases
+end
+
+test "ctes and aliases inside a view being read are not the statement's" do
+	catalog = Plume::Catalog.from_sql("CREATE TABLE t (a); CREATE VIEW v AS WITH w AS (SELECT a FROM t) SELECT q.a FROM w q")
+	r = Plume.reads("SELECT a FROM v AS vv", catalog:)
+
+	assert_equal [r.ctes.to_a, r.aliases], [[], { "vv" => "v" }]
+end
+
 # -- strictness
 
 test "select nope from users raises with a pointer at the culprit" do

@@ -47,12 +47,17 @@ module Plume
 		end
 
 		class References
-			attr_reader :statement, :references, :unresolved
+			# `ctes` are the names the statement's WITH clauses define, `aliases` maps each table alias
+			# to the table, view, CTE or function it stands for - all spelled as written, and none from
+			# inside the views read. Reads and Writes of one statement share them
+			attr_reader :statement, :references, :unresolved, :ctes, :aliases
 
-			def initialize(statement, unresolved = [])
+			def initialize(statement, unresolved = [], ctes = Set.new, aliases = {})
 				@statement = statement
 				@references = []
 				@unresolved = unresolved
+				@ctes = ctes
+				@aliases = aliases
 			end
 
 			# Every base table touched, including ones touched only as a whole

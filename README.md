@@ -335,6 +335,8 @@ reads.calls      # => #<Set: {"like"}>
 
 `reads.calls` lists the functions the statement calls, including the ones inside the views it reads. It also covers what `LIKE`, `GLOB`, `REGEXP`, `MATCH`, `->`, `->>` and `CURRENT_*` call, because SQLite's authorizer counts those as calls too. Table-valued functions in `FROM`, like `json_each`, are listed separately in `reads.functions`.
 
+`reads.ctes` lists the names the statement's `WITH` clauses define, and `reads.aliases` maps each table alias to what it stands for, spelled as written: `{"r" => "recent", "u" => "users"}` above.
+
 `Plume.reads` also takes what you already parsed - a statement node, or the array `Plume.parse` returns - so the SQL is not parsed twice, and a tree you changed after parsing is analyzed as changed. So do `Plume.writes` and `Plume.access` below.
 
 The catalog can also come from a live database with `Plume::Catalog.from_sqlite(db)`, or be left out - then `SELECT *` is reported as a read of the column `"*"` and unqualified columns only resolve when there is a single table in scope.

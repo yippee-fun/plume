@@ -94,7 +94,7 @@ module Plume
 
 			def start(statement)
 				@reads = Reads.new(statement)
-				@writes = Writes.new(statement, @reads.unresolved)
+				@writes = Writes.new(statement, @reads.unresolved, @reads.ctes, @reads.aliases)
 				# By identity: a view holds its parsed select, and hashing that hashes the whole tree
 				@expanding_views = Set.new.compare_by_identity
 			end
@@ -103,6 +103,7 @@ module Plume
 				scope = Scope.new(sources: [], parent:, ctes: {})
 				with_clause&.ctes&.each do |cte|
 					scope.ctes[cte.name.downcase(:ascii)] = Cte.new(node: cte, scope:, analyzed: Set.new)
+					@reads.ctes << cte.name if @expanding_views.empty?
 				end
 				scope
 			end
@@ -199,6 +200,7 @@ module Plume
 			# writing to it is not a read, so it joins the scope without recording one
 			def add_target(node, scope)
 				name = node.alias || node.table
+				alias_of(node.alias, node.schema, node.table)
 				source =
 					if @catalog.nil?
 						Source.new(name:, kind: :table, schema: node.schema, node:)
@@ -323,6 +325,7 @@ module Plume
 					end
 				when TableName then add_table_source(source, scope, usage)
 				when TableFunction
+					alias_of(source.alias, source.schema, source.function)
 					source.arguments&.each { |a| expression(a, scope, :referenced) }
 					# Any virtual table can be called like this, `fts('query')` reads the fts table
 					if @catalog && (table = @catalog.table(source.function, schema: source.schema))
@@ -353,6 +356,7 @@ module Plume
 
 			def add_table_source(source, scope, usage)
 				name = source.alias || source.table
+				alias_of(source.alias, source.schema, source.table)
 
 				if source.schema.nil? && (cte = find_cte(source.table, scope))
 					columns = analyze_cte(cte, usage)
@@ -590,6 +594,10 @@ module Plume
 					end
 				end
 				true
+			end
+
+			def alias_of(name, schema, table)
+				@reads.aliases[name] = Analysis.table_key(schema, table) if name && @expanding_views.empty?
 			end
 
 			def record(schema, table, column, usage, node)
