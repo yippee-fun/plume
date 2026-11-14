@@ -24,7 +24,7 @@ mutate = lambda do |sql, random, tokens|
 	when 0 then sql.byteslice(0, at) + sql.byteslice((at + len)..).to_s
 	when 1 then sql.byteslice(0, at) + (sql.byteslice(at, len).to_s * random.rand(2..4)) + sql.byteslice(at..).to_s
 	when 2 then sql.byteslice(0, at) + NASTY_BYTES.sample(random:) + sql.byteslice(at..).to_s
-	when 3 then sql.byteslice(0, at) + " #{tokens.sample(random:)} " + sql.byteslice(at..).to_s
+	when 3 then sql.byteslice(0, at) + " #{tokens.sample(random:)} ".b + sql.byteslice(at..).to_s
 	when 4 then sql.byteslice(0, at)
 	else
 		cut = sql.byteslice(at, len).to_s
