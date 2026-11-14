@@ -95,7 +95,8 @@ module Plume
 
 		# Yields each direct child with the prop it sits in, and its index when that prop holds an array
 		def each_child
-			return enum_for(:each_child) unless block_given?
+			# Each as one array: TruffleRuby's Enumerator hands only the first of several yielded values to `count`
+			return Enumerator.new { |y| each_child { |*slot| y << slot } } unless block_given?
 
 			self.class.literal_properties.each do |property|
 				case (value = instance_variable_get(:"@#{property.name}"))
@@ -123,7 +124,7 @@ module Plume
 		# Like `walk`, but also says where under the parent each node sits: the prop's name,
 		# and the index into it when it holds an array
 		def walk_with_slots(parent = nil)
-			return enum_for(:walk_with_slots, parent) unless block_given?
+			return Enumerator.new { |y| walk_with_slots(parent) { |*slot| y << slot } } unless block_given?
 
 			stack = [[self, parent, nil, nil]]
 			while (node, up, prop, index = stack.pop)
