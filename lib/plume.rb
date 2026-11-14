@@ -28,6 +28,7 @@ module Plume
 	autoload :Comments, "plume/comment"
 	autoload :Normalize, "plume/normalize"
 	autoload :Fingerprint, "plume/fingerprint"
+	autoload :Policy, "plume/policy"
 
 	autoload :BinaryExpression, "plume/ast/binary_expression"
 	autoload :ParentheticalExpression, "plume/ast/parenthetical_expression"
