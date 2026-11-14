@@ -254,7 +254,7 @@ module Plume
 			def drop_triggers(object, statement)
 				return unless object
 
-				triggers = @catalog.triggers.select { |t| t.schema.casecmp?(object.schema) && t.table.casecmp?(object.name) }
+				triggers = @catalog.triggers.select { |t| Catalog.same_name?(t.schema, object.schema) && Catalog.same_name?(t.table, object.name) }
 				triggers.reverse_each { |t| act(:drop_trigger, temp: t.schema, name: t.name, detail: t.table, node: statement) }
 			end
 
@@ -262,7 +262,7 @@ module Plume
 			def act(action, node:, name: nil, detail: nil, schema: nil, temp: nil)
 				if temp
 					schema = temp
-					action = action.name.sub(/\A(create|drop)_/) { "#{$1}_temp_" }.to_sym if temp.casecmp?("temp")
+					action = action.name.sub(/\A(create|drop)_/) { "#{$1}_temp_" }.to_sym if Catalog.same_name?(temp, "temp")
 				end
 				@actions << Action.new(action:, name:, detail:, schema:, node:)
 			end
@@ -286,7 +286,7 @@ module Plume
 					if target.nil? then @catalog.indexes
 					elsif (index = @catalog.index(target.table, schema: target.schema)) then [index]
 					elsif (table = @catalog.table(target.table, schema: target.schema))
-						@catalog.indexes.select { |i| i.schema == table.schema && i.table.casecmp?(table.name) }
+						@catalog.indexes.select { |i| i.schema == table.schema && Catalog.same_name?(i.table, table.name) }
 					else
 						[]
 					end
@@ -299,10 +299,10 @@ module Plume
 				return target && act(:analyze, name: target.table, schema: target.schema || "main", node: statement) unless @catalog
 
 				tables =
-					if target.nil? then @catalog.tables.reject { |t| t.schema.casecmp?("temp") }
+					if target.nil? then @catalog.tables.reject { |t| Catalog.same_name?(t.schema, "temp") }
 					elsif (table = @catalog.table(target.table, schema: target.schema)) then [table]
 					elsif (index = @catalog.index(target.table, schema: target.schema)) then [@catalog.table(index.table, schema: index.schema)].compact
-					elsif target.schema.nil? then @catalog.tables.select { |t| t.schema.casecmp?(target.table) }
+					elsif target.schema.nil? then @catalog.tables.select { |t| Catalog.same_name?(t.schema, target.table) }
 					else
 						[]
 					end

@@ -236,3 +236,16 @@ test "summary leaves the catalog it was given alone" do
 	assert_equal summary.resolved?, true
 	assert_equal catalog.table("t").columns, ["a"]
 end
+
+test "names compare as SQLite compares them, A-Z only and byte for byte" do
+	assert Plume::Catalog.same_name?("Posts", "POSTS")
+	refute Plume::Catalog.same_name?("Σ", "σ")
+	refute Plume::Catalog.same_name?((+"\xC3INTEGER").force_encoding(Encoding::UTF_8), "INTEGER")
+	refute Plume::Catalog.same_name?(nil, "x")
+end
+
+test "a column type that is not valid UTF-8 is no rowid alias, and analyzes" do
+	statement = Plume.parse((+"CREATE TABLE t1(a \xC3INTEGER PRIMARY KEY, b)").force_encoding(Encoding::UTF_8)).first
+
+	assert_equal Plume.access(statement).actions.map(&:action), [:create_table, :create_index]
+end
