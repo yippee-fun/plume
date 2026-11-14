@@ -11,6 +11,7 @@
 - Chains at one precedence print flat, the way SQLite associates them (`a - b + c`), and deep trees - a 6000-term OR, 600 UNION ALLs - print and walk without running out of stack
 - `LIMIT a, b` prints as written rather than as `LIMIT b OFFSET a`, since SQLite numbers `?` parameters left to right
 - Running out of stack while printing or analyzing raises `Plume::Printer::Error` or `Plume::Analysis::Error` instead of `SystemStackError`, and analysis stops at SQLite's limit of 64 tables in a join
+- Fixed: a frame boundary of UNBOUNDED with no PRECEDING or FOLLOWING parsed, and then could not be printed
 - Fixed: a comma-separated list went on after an item with no separator, or ended on a separator - so `ORDER BY c ROWS 2 PRECEDING` failed to parse, while `SELECT a, b, FROM t`, `SELECT * + 1` and `VALUES (1, 2,)` parsed
 - Fixed: `count(ALL x)` read as `count(DISTINCT x)`
 - Fixed: `?0` and `?32767` and up parsed; SQLite numbers parameters from 1 to 32766
