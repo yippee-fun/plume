@@ -199,7 +199,9 @@ module Plume
 			[beg, fin].freeze if beg
 		end
 
-		def to_sql = Printer.print(self)
+		# `pretty: true` lays the SQL out over lines, see PrettyPrinter for `indent_size:`, `max_line_length:`
+		# and `commas_start_of_line:`
+		def to_sql(pretty: false, **layout) = pretty ? PrettyPrinter.print(self, **layout) : Printer.print(self)
 
 		# A plain hash of the whole tree that JSON can carry, which `Plume.load` turns back into it
 		def dump = Dump.dump(self)
