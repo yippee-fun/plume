@@ -303,6 +303,13 @@ Plume.normalize("SELECT * FROM posts /* app */ WHERE user_id = 42 AND title LIKE
 
 Numbers (including their sign), strings and blobs are replaced. `NULL`, `TRUE`, `FALSE` and `CURRENT_*` are left alone, and so is an integer on its own in `ORDER BY` or `GROUP BY`, where SQLite reads it as a column position. Only `SELECT`, `INSERT`, `UPDATE` and `DELETE` are normalized. Pass a parsed statement to get a tree back with `Variable`s in place of the constants. The tests bind the constants back into the normalized SQL and check that SQLite returns the same rows.
 
+`Plume.fingerprint` goes one step further and gives the same short hash for every spelling of a query: whatever its values, parameter names, spacing, keyword and name case, or parentheses, and however many constants an `IN` list or `VALUES` holds. It is stable across processes and Ruby versions, so it can be stored:
+
+```ruby
+Plume.fingerprint("SELECT a FROM t WHERE b IN (1, 2, 3)") # => "07b540b0c5ed57e1"
+Plume.fingerprint("select A from T where b in (?)")       # => "07b540b0c5ed57e1"
+```
+
 ### What does this query read?
 
 `Plume.reads` works out which tables and columns a statement would read, looking through aliases, joins, subqueries, CTEs and views:
