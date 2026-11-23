@@ -419,13 +419,13 @@ module Plume
 				end
 			end
 
-			def select(statement, parent:, usage:)
+			def select(statement, parent:, usage:, skip_names: false)
 				scope = with_scope(statement.with_clause, parent)
 
 				names = nil
 				core_scope = nil
 				statement.cores.each do |core|
-					core_names, core_scope = select_core(core, parent: scope, usage:)
+					core_names, core_scope = select_core(core, parent: scope, usage:, skip_names:)
 					names ||= core_names
 				end
 
@@ -441,7 +441,7 @@ module Plume
 				names
 			end
 
-			def select_core(core, parent:, usage:)
+			def select_core(core, parent:, usage:, skip_names: false)
 				scope = Scope.new(sources: [], parent:, ctes: {}, aliases: {})
 
 				if ValuesClause === core
@@ -463,7 +463,9 @@ module Plume
 						expanded ? names.concat(expanded) : names << nil
 					else
 						expression(column.result, scope, usage)
-						names << output_name(column)
+						# A scalar subquery's names are thrown away. Walking source text for
+						# them at every enclosing query is quadratic in the nesting.
+						names << output_name(column) unless skip_names
 					end
 				end
 
@@ -666,7 +668,7 @@ module Plume
 				when FunctionReference
 					@reads.calls << node.function.downcase(:ascii)
 					node.children.each { |child| expression(child, scope, usage, aliases:) }
-				when SelectStatement then select(node, parent: scope, usage:)
+				when SelectStatement then select(node, parent: scope, usage:, skip_names: true)
 				when TableName then whole_table(node, scope)
 				when Node
 					if node.respond_to?(:operator) && (function = OPERATOR_FUNCTIONS[node.operator])
