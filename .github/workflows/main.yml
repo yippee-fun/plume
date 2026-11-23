@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+# The editor tooling has C extensions that do not build everywhere, and no test needs it
+env:
+  BUNDLE_WITHOUT: editor
+
 jobs:
   ruby-versions:
     uses: ruby/actions/.github/workflows/ruby_versions.yml@f0adcbc13299b38a289a1c914af4ad137ca6bb54
@@ -18,16 +22,16 @@ jobs:
 
   test:
     needs: ruby-versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
         ruby-version: ${{ fromJson(needs.ruby-versions.outputs.versions) }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@be3c7df29b3349ec6bcfc6b4792f1cf9f5237d18 # v1.343.0
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
@@ -45,12 +49,15 @@ jobs:
         run: bundle exec qt -t 1 test/ractor.test.rb
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Ruby from .ruby-version, Bundler and RuboCop from Gemfile.lock
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@be3c7df29b3349ec6bcfc6b4792f1cf9f5237d18 # v1.343.0
         with:
+          ruby-version: .ruby-version
+          bundler: Gemfile.lock
           bundler-cache: true
       - name: RuboCop
         run: bundle exec rubocop
