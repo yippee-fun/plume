@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Fixed: analyzing a PRAGMA whose value is not valid UTF-8 raised `ArgumentError` instead of reporting the pragma
+
 ## [0.3.0] - 2026-11-14
 
 - `Plume::SyntaxError` carries `location`, `position`, `token`, `line` and `expected`, so tools can point at the error without reading the message

@@ -312,7 +312,8 @@ module Plume
 			# SQLite hands the authorizer a PRAGMA's value as text, unquoted and without a plus sign
 			def pragma_value(statement)
 				src = statement.value_tk_src or return
-				(src.match?(/\A['"]/) ? statement.value_tk_val.to_s : src.delete_prefix("+"))
+				# start_with? rather than a regexp, which raises on a value that is not valid UTF-8
+				(src.start_with?("'", '"') ? statement.value_tk_val.to_s : src.delete_prefix("+"))
 			end
 
 			# ATTACH and DETACH name a file or schema with any expression; a plain string or name is told

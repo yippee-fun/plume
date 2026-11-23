@@ -249,3 +249,9 @@ test "a column type that is not valid UTF-8 is no rowid alias, and analyzes" do
 
 	assert_equal Plume.access(statement).actions.map(&:action), [:create_table, :create_index]
 end
+
+test "a PRAGMA value that is not valid UTF-8 analyzes" do
+	statement = Plume.parse((+"PRAGMA incremental_vacuum(\x800)").force_encoding(Encoding::UTF_8)).first
+
+	assert_equal Plume.access(statement).actions.map { |a| [a.action, a.name, a.detail.b] }, [[:pragma, "incremental_vacuum", "\x800".b]]
+end
